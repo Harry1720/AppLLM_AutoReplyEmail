@@ -46,13 +46,17 @@ def get_todays_emails():
     service = get_gmail_service()
     
     # Get today's date
-    today = datetime.datetime.now().date()
+    # today = datetime.datetime.now().date()
     
     # Search for today's emails
-    query = f'after:{today.strftime("%Y/%m/%d")}'
+    # query = f'after:{today.strftime("%Y/%m/%d")}'
+    query = 'label:sent'  # Gmail label for Sent Mail
+
     
     try:
         # Get list of messages
+        #Nếu bạn muốn giới hạn số lượng thư gửi lấy về (ví dụ chỉ 50 email gần nhất), 
+        # có thể thêm tham số maxResults=50 trong lời gọi .list():
         results = service.users().messages().list(userId='me', q=query).execute()
         messages = results.get('messages', [])
         
@@ -69,6 +73,7 @@ def get_todays_emails():
             headers = msg['payload']['headers']
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'No Sender')
+            to = next((h['value'] for h in headers if h['name'].lower() == 'to'), 'No Recipient')
             date = next((h['value'] for h in headers if h['name'].lower() == 'date'), 'No Date')
             
             # Extract msg body
@@ -90,6 +95,7 @@ def get_todays_emails():
                 'id': id,
                 'subject': subject,
                 'from': sender,
+                'to': to,
                 'date': date,
                 'snippet': msg['snippet'],
                 'body': body
@@ -105,10 +111,11 @@ def main():
     print("calling main....")
     emails = get_todays_emails()
     
-    print(f"\nFound {len(emails)} emails from today:")
+    print(f"\nFound {len(emails)} emails from Sent:")
     for i, email in enumerate(emails, 1):
         print(f"\nEmail {i}:")
         print(f"From: {email['from']}")
+        print(f"To: {email['to']}")
         print(f"Subject: {email['subject']}")
         print(f"Date: {email['date']}")
         print(f"Snippet: {email['snippet']}")
