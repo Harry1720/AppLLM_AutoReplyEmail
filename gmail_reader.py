@@ -41,7 +41,7 @@ def get_gmail_service():
     
     return build('gmail', 'v1', credentials=creds)
 
-def get_todays_emails():
+def get_sent_emails():
     """Fetch today's emails from Gmail"""
     service = get_gmail_service()
     
@@ -109,7 +109,7 @@ def get_todays_emails():
 
 def main():
     print("calling main....")
-    emails = get_todays_emails()
+    emails = get_sent_emails()
     
     print(f"\nFound {len(emails)} emails from Sent:")
     for i, email in enumerate(emails, 1):
