@@ -22,6 +22,7 @@ for text, meta in zip(data["documents"], data["metadatas"]):
     rows.append(row)
 
 df = pd.DataFrame(rows)
-df.to_csv("email_chunks_export.csv", encoding="utf-8", index=False)
+# Thêm encoding UTF-8 với BOM để Excel đọc đúng tiếng Việt
+df.to_csv("email_chunks_export.csv", encoding="utf-8-sig", index=False)
 
 print("✅ Đã xuất ra file: email_chunks_export.csv")
