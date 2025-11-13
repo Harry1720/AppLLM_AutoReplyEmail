@@ -1,5 +1,6 @@
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+# from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from gmail_reader import get_sent_emails
 import os
@@ -8,11 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def process_emails():
-    # Sử dụng Gemini embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=os.getenv('GOOGLE_API_KEY')
-    )
+    # Khởi tạo OpenAI embeddings
+    # embeddings = OpenAIEmbeddings()
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
     
     # Tạo text splitter
     text_splitter = RecursiveCharacterTextSplitter(
