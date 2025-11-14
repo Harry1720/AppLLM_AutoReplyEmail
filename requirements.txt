@@ -1,7 +1,20 @@
+# Google API
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
-langchain
-langgraph
+
+# LLM & embeddings
+langchain>=1.0.0
+langchain-text-splitters
+langchain-community
+sentence-transformers
+
+# Vector DB
+supabase
+
+# Utils
 openai
 packaging
+python-dotenv
+
+
