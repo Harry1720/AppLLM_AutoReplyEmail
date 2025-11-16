@@ -8,13 +8,17 @@ langchain>=1.0.0
 langchain-text-splitters
 langchain-community
 sentence-transformers
+langchain-huggingface
+langchain-ollama
 
 # Vector DB
 supabase
 
 # Utils
-openai
 packaging
 python-dotenv
+
+# LangGraph
+langgraph
 
 

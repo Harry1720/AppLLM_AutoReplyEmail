@@ -1,69 +1,100 @@
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, END
 from typing import Dict, List, TypedDict
-from langchain_community.vectorstores import Chroma
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_community.vectorstores import SupabaseVectorStore
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_ollama import OllamaLLM  # Updated import
+from langchain_core.prompts import PromptTemplate
+from supabase.client import Client, create_client
 from gmail_reader import get_gmail_service
 import os
 from dotenv import load_dotenv
 import logging
+import json
+import base64
 
 load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-class EmailReasoningState(TypedDict):
-    new_email: Dict
-    relevant_emails: List[Dict]
-    context: str
-    draft_reply: str
-    final_reply: str
-    confidence_score: float
+class GraphState(TypedDict):
+    new_email_id: str
+    user_id: str
+    email_content: dict
+    context_emails: List[str]
+    draft_reply: dict  # Will contain {"subject": "...", "body": "..."}
+    error: str
 
 class EmailReasoningSystem:
     def __init__(self):
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/embedding-001",
-            google_api_key=os.getenv('GOOGLE_API_KEY')
+        # Initialize HuggingFace embeddings for vectorization
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
         
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
-            google_api_key=os.getenv('GOOGLE_API_KEY'),
-            temperature=0.3
+        # Initialize LLAMA 3 via Ollama (Updated)
+        self.llm = OllamaLLM(
+            model="llama3",
+            format="json"  # Request JSON response
         )
         
-        self.vectorstore = Chroma(
-            collection_name="emails",
-            embedding_function=self.embeddings,
-            persist_directory="./vector_db"
-        )
+        # Initialize Supabase client
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env file")
+        
+        self.supabase_client = create_client(supabase_url, supabase_key)
+        
+        # Test Supabase connection
+        try:
+            # Test connection by checking if documents table exists
+            result = self.supabase_client.table("documents").select("id").limit(1).execute()
+            logging.info(f"✓ Supabase connection successful. Found {len(result.data)} records.")
+        except Exception as e:
+            logging.error(f"❌ Supabase connection failed: {e}")
+            raise
+        
+        # Initialize Supabase vector store
+        try:
+            self.vectorstore = SupabaseVectorStore(
+                client=self.supabase_client,
+                embedding=self.embeddings,
+                table_name="documents",
+                query_name="match_documents"
+            )
+            logging.info("✓ Supabase vector store initialized")
+        except Exception as e:
+            logging.error(f"❌ Failed to initialize vector store: {e}")
+            raise
         
         self.gmail_service = get_gmail_service()
 
-    def read_new_email(self, state: EmailReasoningState) -> EmailReasoningState:
-        """Đọc email mới đến (inbox)"""
-        logging.info("📧 Đọc email mới từ inbox...")
-        
+    def get_email_node(self, state: GraphState) -> GraphState:
+        """Node to get new email content"""
+        logging.info("--- STEP 1: GET EMAIL CONTENT ---")
         try:
-            # Lấy email chưa đọc từ inbox
-            results = self.gmail_service.users().messages().list(
-                userId='me', 
-                q='is:unread in:inbox',
-                maxResults=1
-            ).execute()
+            email_id = state.get("new_email_id")
+            if not email_id:
+                # Get latest unread email
+                results = self.gmail_service.users().messages().list(
+                    userId='me', 
+                    q='is:unread in:inbox',
+                    maxResults=1
+                ).execute()
+                
+                messages = results.get('messages', [])
+                if not messages:
+                    return {**state, "error": "No new emails found"}
+                
+                email_id = messages[0]['id']
+                state["new_email_id"] = email_id
             
-            messages = results.get('messages', [])
-            
-            if not messages:
-                logging.info("Không có email mới")
-                return state
-            
-            # Lấy email mới nhất
-            message_id = messages[0]['id']
+            # Get email details
             msg = self.gmail_service.users().messages().get(
                 userId='me', 
-                id=message_id
+                id=email_id
             ).execute()
             
             # Parse email
@@ -75,8 +106,8 @@ class EmailReasoningSystem:
             # Extract body
             body = self._extract_email_body(msg['payload'])
             
-            state["new_email"] = {
-                'id': message_id,
+            email_content = {
+                'id': email_id,
                 'subject': subject,
                 'from': sender,
                 'date': date,
@@ -84,252 +115,309 @@ class EmailReasoningSystem:
                 'snippet': msg.get('snippet', '')
             }
             
-            logging.info(f"✓ Đã đọc email mới: {subject}")
-            return state
+            logging.info(f"✓ Retrieved email: {subject}")
+            return {**state, "email_content": email_content}
             
         except Exception as e:
-            logging.error(f"Lỗi khi đọc email: {str(e)}")
-            return state
+            logging.error(f"Error getting email: {str(e)}")
+            return {**state, "error": f"Error getting email: {e}"}
 
     def _extract_email_body(self, payload):
-        """Extract email body từ payload"""
+        """Extract email body from payload"""
         body = ''
         
         if 'parts' in payload:
             for part in payload['parts']:
                 if part['mimeType'] == 'text/plain':
                     if 'data' in part['body']:
-                        import base64
                         body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
                         break
         else:
             if payload['body'].get('data'):
-                import base64
                 body = base64.urlsafe_b64decode(payload['body']['data']).decode('utf-8')
         
         return body
 
-    def find_relevant_past_emails(self, state: EmailReasoningState) -> EmailReasoningState:
-        """Tìm các email đã gửi liên quan từ vector database"""
-        logging.info("🔍 Tìm kiếm email liên quan...")
-        
-        if not state.get("new_email"):
-            return state
-        
+    def retrieve_context_node(self, state: GraphState) -> GraphState:
+        """Node to search for context from sent emails"""
+        logging.info("--- STEP 2: RETRIEVE CONTEXT ---")
         try:
-            new_email = state["new_email"]
+            if not state.get("email_content"):
+                return {**state, "error": "No email content to search context for"}
             
-            # Tạo query từ subject và body của email mới
-            query_text = f"{new_email['subject']} {new_email['body']}"
+            email_content = state["email_content"]
             
-            # Tìm kiếm các chunk tương tự
+            # Create query from subject and body
+            query_text = f"{email_content['subject']} {email_content['body']}"
+            logging.info(f"Searching for context with query: {query_text[:100]}...")
+            
+            # Check if there are any documents in the vector store
+            try:
+                # First, check if there are any documents
+                doc_count = self.supabase_client.table("documents").select("id", count="exact").execute()
+                total_docs = doc_count.count if hasattr(doc_count, 'count') else 0
+                logging.info(f"Total documents in vector store: {total_docs}")
+                
+                if total_docs == 0:
+                    logging.warning("⚠️ No documents found in vector store. Please run email_vectorizer.py first.")
+                    return {**state, "context_emails": [], "error": "No vector data found. Run email_vectorizer.py first."}
+                
+            except Exception as e:
+                logging.error(f"Error checking document count: {e}")
+            
+            # Search for similar documents in Supabase
             similar_docs = self.vectorstore.similarity_search_with_score(
                 query_text, 
-                k=5  # Lấy 5 kết quả tương tự nhất
+                k=3  # Get top 3 most similar results
             )
             
-            relevant_emails = []
+            context_emails = []
             seen_email_ids = set()
             
             for doc, score in similar_docs:
                 metadata = doc.metadata
                 email_id = metadata.get('email_id')
                 
-                # Tránh trùng lặp email
+                # Avoid duplicate emails
                 if email_id not in seen_email_ids:
-                    relevant_emails.append({
-                        'email_id': email_id,
-                        'subject': metadata.get('subject', ''),
-                        'from': metadata.get('from', ''),
-                        'to': metadata.get('to', ''),
-                        'date': metadata.get('date', ''),
-                        'content': doc.page_content,
-                        'similarity_score': float(1 - score)  # Convert distance to similarity
-                    })
+                    context_text = f"""
+EMAIL REFERENCE:
+Subject: {metadata.get('subject', '')}
+To: {metadata.get('to', '')}
+Date: {metadata.get('date', '')}
+Content: {doc.page_content[:300]}...
+Similarity: {float(1 - score):.2f}
+"""
+                    context_emails.append(context_text)
                     seen_email_ids.add(email_id)
             
-            state["relevant_emails"] = relevant_emails
-            
-            logging.info(f"✓ Tìm thấy {len(relevant_emails)} email liên quan")
-            for email in relevant_emails:
-                logging.info(f"  - {email['subject']} (similarity: {email['similarity_score']:.2f})")
-            
-            return state
+            logging.info(f"✓ Found {len(context_emails)} relevant emails")
+            return {**state, "context_emails": context_emails}
             
         except Exception as e:
-            logging.error(f"Lỗi khi tìm kiếm: {str(e)}")
-            state["relevant_emails"] = []
-            return state
+            error_msg = f"Error retrieving context: {str(e)}"
+            logging.error(error_msg)
+            # Don't stop the workflow, continue with empty context
+            return {**state, "context_emails": [], "error": ""}
 
-    def create_context(self, state: EmailReasoningState) -> EmailReasoningState:
-        """Tạo ngữ cảnh từ các email liên quan"""
-        logging.info("📝 Tạo ngữ cảnh...")
-        
-        relevant_emails = state.get("relevant_emails", [])
-        
-        if not relevant_emails:
-            state["context"] = "Không có email tương tự trong lịch sử."
-            return state
-        
-        context_parts = []
-        for i, email in enumerate(relevant_emails, 1):
-            context_parts.append(f"""
-EMAIL ĐÃ GỬI #{i}:
-Tiêu đề: {email['subject']}
-Người nhận: {email['to']}
-Ngày: {email['date']}
-Nội dung: {email['content'][:500]}...
-Độ tương tự: {email['similarity_score']:.2f}
----""")
-        
-        state["context"] = "\n".join(context_parts)
-        logging.info(f"✓ Đã tạo ngữ cảnh từ {len(relevant_emails)} email")
-        
-        return state
+    def generate_reply_node(self, state: GraphState) -> GraphState:
+        """Node to generate reply using LLAMA 3"""
+        logging.info("--- STEP 3: GENERATE REPLY WITH LLAMA 3 ---")
+        try:
+            if not state.get("email_content"):
+                return {**state, "error": "No email content to generate reply for"}
+            
+            new_email = state["email_content"]
+            context_list = state.get("context_emails", [])
+            context = "\n---\n".join(context_list) if context_list else "Không tìm thấy email tham khảo nào."
+            
+            # Create prompt template
+            template = """Bạn là một trợ lý email chuyên nghiệp, có nhiệm vụ soạn thảo email trả lời cho người dùng.
 
-    def draft_reply_with_llm(self, state: EmailReasoningState) -> EmailReasoningState:
-        """Sử dụng LLM để tạo bản nháp trả lời"""
-        logging.info("🤖 Tạo bản nháp trả lời với Gemini...")
-        
-        new_email = state.get("new_email")
-        context = state.get("context", "")
-        
-        if not new_email:
-            logging.error("Không có email mới để trả lời")
-            return state
-        
-        # Tạo prompt engineering
-        prompt = f"""Bạn là một trợ lý email thông minh và chuyên nghiệp. 
-Nhiệm vụ: Dựa vào email mới nhận và các email tôi đã từng gửi trong quá khứ, hãy soạn một email trả lời phù hợp.
+**Nhiệm vụ:**
+1. Đọc kỹ "EMAIL MỚI NHẬN".
+2. Tham khảo văn phong từ "CÁC EMAIL THAM KHẢO" (nếu có).
+3. Soạn một email trả lời ngắn gọn, chuyên nghiệp, đúng trọng tâm.
 
-NGUYÊN TẮC:
-- Giữ văn phong nhất quán với các email đã gửi trước đây
-- Trả lời đúng trọng tâm câu hỏi
-- Lịch sự, chuyên nghiệp
-- Ngắn gọn, súc tích
-- Sử dụng tiếng Việt tự nhiên
+**Nguyên tắc:**
+- Luôn giữ văn phong lịch sự, tích cực.
+- Nếu không có đủ thông tin để trả lời, hãy nói rằng bạn sẽ kiểm tra và phản hồi sau.
+- Trả lời bằng tiếng Việt.
+
+**Định dạng đầu ra:**
+Hãy trả lời bằng một đối tượng JSON duy nhất có cấu trúc sau:
+{{
+  "subject": "Tiêu đề email trả lời (có thể thêm Re:)",
+  "body": "Nội dung email trả lời, bắt đầu bằng lời chào và kết thúc bằng lời cảm ơn."
+}}
 
 ---
-EMAIL MỚI NHẬN:
-Từ: {new_email['from']}
-Tiêu đề: {new_email['subject']}
-Nội dung: {new_email['body']}
+**EMAIL MỚI NHẬN:**
+Từ: {sender}
+Tiêu đề: {subject}
+Nội dung:
+{body}
 
 ---
-CÁC EMAIL TÔI ĐÃ GỬI TRƯỚC ĐÂY (để tham khảo văn phong):
+**CÁC EMAIL THAM KHẢO (văn phong của tôi):**
 {context}
 
 ---
-HÃY SOẠN EMAIL TRẢ LỜI:
-Chỉ trả về nội dung email, không cần tiêu đề hay thông tin khác."""
+**JSON ĐẦU RA:**
+"""
 
-        try:
+            prompt_template = PromptTemplate.from_template(template)
+            
+            prompt = prompt_template.format(
+                sender=new_email["from"],
+                subject=new_email["subject"],
+                body=new_email["body"],
+                context=context
+            )
+            
+            logging.info("Calling LLAMA 3 via Ollama...")
+            
+            # Call LLAMA 3 via Ollama
             response = self.llm.invoke(prompt)
-            draft_reply = response.content.strip()
             
-            state["draft_reply"] = draft_reply
+            logging.info(f"Raw LLM response: {response[:200]}...")
             
-            # Đánh giá độ tin cậy dựa trên context
-            confidence = min(0.9, 0.5 + len(state.get("relevant_emails", [])) * 0.1)
-            state["confidence_score"] = confidence
-            
-            logging.info(f"✓ Đã tạo bản nháp (confidence: {confidence:.2f})")
-            logging.info(f"Preview: {draft_reply[:100]}...")
-            
-            return state
+            # Parse JSON response
+            try:
+                # Clean response if needed
+                response_clean = response.strip()
+                if response_clean.startswith('```json'):
+                    response_clean = response_clean[7:]
+                if response_clean.endswith('```'):
+                    response_clean = response_clean[:-3]
+                
+                draft_reply = json.loads(response_clean)
+                
+                # Validate response structure
+                if not isinstance(draft_reply, dict) or "subject" not in draft_reply or "body" not in draft_reply:
+                    raise ValueError("Invalid response format from LLM")
+                
+                logging.info(f"✓ Generated reply with subject: {draft_reply['subject'][:50]}...")
+                return {**state, "draft_reply": draft_reply}
+                
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse LLM JSON response: {e}")
+                logging.error(f"Raw response was: {response}")
+                # Fallback response
+                draft_reply = {
+                    "subject": f"Re: {new_email['subject']}",
+                    "body": "Chào bạn,\n\nCảm ơn bạn đã liên hệ. Tôi đã nhận được email của bạn và sẽ phản hồi sớm nhất có thể.\n\nTrân trọng!"
+                }
+                return {**state, "draft_reply": draft_reply}
             
         except Exception as e:
-            logging.error(f"Lỗi khi gọi LLM: {str(e)}")
-            state["draft_reply"] = f"Lỗi: Không thể tạo bản nháp. {str(e)}"
-            state["confidence_score"] = 0.0
-            return state
+            logging.error(f"Error generating reply: {str(e)}")
+            return {**state, "error": f"Error generating reply: {e}"}
 
-    def review_draft(self, state: EmailReasoningState) -> EmailReasoningState:
-        """Xem xét và hoàn thiện bản nháp"""
-        logging.info("👀 Xem xét bản nháp...")
+    def create_draft_node(self, state: GraphState) -> GraphState:
+        """Node to create draft in Gmail"""
+        logging.info("--- STEP 4: CREATE DRAFT IN GMAIL ---")
+        try:
+            if not state.get("email_content") or not state.get("draft_reply"):
+                return {**state, "error": "Missing email content or draft reply"}
+            
+            email_content = state["email_content"]
+            draft_reply = state["draft_reply"]
+            
+            # Create draft message
+            draft_message = {
+                'message': {
+                    'raw': self._create_message(
+                        to=email_content["from"],
+                        subject=draft_reply["subject"],
+                        body=draft_reply["body"]
+                    )
+                }
+            }
+            
+            # Create draft in Gmail
+            draft = self.gmail_service.users().drafts().create(
+                userId='me',
+                body=draft_message
+            ).execute()
+            
+            logging.info(f"✓ Created draft with ID: {draft['id']}")
+            return {**state, "draft_id": draft['id']}
+            
+        except Exception as e:
+            logging.error(f"Error creating draft: {str(e)}")
+            return {**state, "error": f"Error creating draft: {e}"}
+
+    def _create_message(self, to, subject, body):
+        """Create a message for Gmail API"""
+        import email.mime.text
         
-        draft = state.get("draft_reply", "")
-        confidence = state.get("confidence_score", 0.0)
+        message = email.mime.text.MIMEText(body)
+        message['to'] = to
+        message['subject'] = subject
         
-        # Thêm disclaimer nếu confidence thấp
-        if confidence < 0.6:
-            final_reply = f"{draft}\n\n[Lưu ý: Email này được tạo tự động, vui lòng kiểm tra trước khi gửi]"
-        else:
-            final_reply = draft
-        
-        state["final_reply"] = final_reply
-        
-        logging.info(f"✓ Hoàn thành bản nháp cuối cùng")
-        return state
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+        return raw_message
 
 def create_reasoning_workflow():
-    """Tạo workflow với LangGraph"""
+    """Create workflow with LangGraph"""
     system = EmailReasoningSystem()
     
-    # Tạo state graph
-    workflow = StateGraph(EmailReasoningState)
+    # Create state graph
+    workflow = StateGraph(GraphState)
     
-    # Thêm các nodes
-    workflow.add_node("read_email", system.read_new_email)
-    workflow.add_node("find_relevant", system.find_relevant_past_emails)
-    workflow.add_node("create_context", system.create_context)
-    workflow.add_node("draft_reply", system.draft_reply_with_llm)
-    workflow.add_node("review", system.review_draft)
+    # Add nodes to graph
+    workflow.add_node("getEmail", system.get_email_node)
+    workflow.add_node("retrieveContext", system.retrieve_context_node)
+    workflow.add_node("generateReply", system.generate_reply_node)
+    workflow.add_node("createDraft", system.create_draft_node)
     
-    # Định nghĩa luồng
-    workflow.set_entry_point("read_email")
-    workflow.add_edge("read_email", "find_relevant")
-    workflow.add_edge("find_relevant", "create_context")
-    workflow.add_edge("create_context", "draft_reply")
-    workflow.add_edge("draft_reply", "review")
+    # Define workflow connections
+    workflow.set_entry_point("getEmail")
+    workflow.add_edge("getEmail", "retrieveContext")
+    workflow.add_edge("retrieveContext", "generateReply")
+    workflow.add_edge("generateReply", "createDraft")
+    workflow.add_edge("createDraft", END)
     
     return workflow.compile()
 
 def main():
-    """Chạy hệ thống reasoning"""
-    logging.info("🚀 Khởi động Email Reasoning System...")
+    """Run the email reasoning system"""
+    logging.info("🚀 Starting Email Reasoning System with LLAMA 3...")
     
     try:
-        # Tạo workflow
+        # Create workflow
         app = create_reasoning_workflow()
         
-        # Khởi tạo state rỗng
-        initial_state = EmailReasoningState(
-            new_email={},
-            relevant_emails=[],
-            context="",
-            draft_reply="",
-            final_reply="",
-            confidence_score=0.0
+        # Initialize state
+        initial_state = GraphState(
+            new_email_id="",  # Will be auto-detected
+            user_id="me",
+            email_content={},
+            context_emails=[],
+            draft_reply={},
+            error=""
         )
         
-        # Chạy workflow
+        # Run workflow
         final_state = app.invoke(initial_state)
         
-        # Hiển thị kết quả
+        # Display results
         print("\n" + "="*60)
-        print("📧 KẾT QUẢ EMAIL REASONING SYSTEM")
+        print("📧 EMAIL REASONING SYSTEM RESULTS")
         print("="*60)
         
-        if final_state.get("new_email"):
-            new_email = final_state["new_email"]
-            print(f"\n📨 EMAIL MỚI NHẬN:")
-            print(f"Từ: {new_email['from']}")
-            print(f"Tiêu đề: {new_email['subject']}")
-            print(f"Nội dung: {new_email['body'][:200]}...")
+        if final_state.get("error"):
+            print(f"\n❌ ERROR OCCURRED:")
+            print(final_state["error"])
+            # Don't return early if it's just a context error
+            if "No vector data found" not in final_state["error"]:
+                return final_state
         
-        print(f"\n🔍 ĐÃ TÌM THẤY: {len(final_state.get('relevant_emails', []))} email liên quan")
+        if final_state.get("email_content"):
+            email = final_state["email_content"]
+            print(f"\n📨 NEW EMAIL RECEIVED:")
+            print(f"From: {email['from']}")
+            print(f"Subject: {email['subject']}")
+            print(f"Content: {email['body'][:200]}...")
         
-        print(f"\n🤖 BẢN NHÁP TRẢ LỜI:")
-        print(f"Độ tin cậy: {final_state.get('confidence_score', 0):.1%}")
-        print("-" * 40)
-        print(final_state.get('final_reply', 'Không có bản nháp'))
-        print("-" * 40)
+        print(f"\n🔍 FOUND: {len(final_state.get('context_emails', []))} relevant emails")
+        
+        if final_state.get("draft_reply"):
+            draft = final_state["draft_reply"]
+            print(f"\n🤖 GENERATED REPLY:")
+            print(f"Subject: {draft['subject']}")
+            print("-" * 40)
+            print(draft['body'])
+            print("-" * 40)
+        
+        if final_state.get("draft_id"):
+            print(f"\n✅ DRAFT CREATED: ID {final_state['draft_id']}")
         
         return final_state
         
     except Exception as e:
-        logging.error(f"Lỗi hệ thống: {str(e)}")
+        logging.error(f"System error: {str(e)}")
         return None
 
 if __name__ == "__main__":

@@ -170,7 +170,7 @@ def get_sent_emails():
         return []
 
 def main():
-    print("calling main....")
+    # print("calling main....")
     emails = get_sent_emails()
     
     print(f"\nFound {len(emails)} emails from Sent:")

@@ -3,11 +3,11 @@ import sys
 import logging
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import SupabaseVectorStore  # <-- THAY ĐỔI
-from supabase.client import Client, create_client  # <-- THÊM MỚI
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import SupabaseVectorStore
+from supabase.client import Client, create_client
 from gmail_reader import get_sent_emails
-# import shutil (Không cần nữa)
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')

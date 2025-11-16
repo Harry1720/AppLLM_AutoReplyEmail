@@ -1,60 +1,60 @@
-from email_reasoning_system import create_reasoning_workflow, EmailReasoningState
+from email_reasoning_system import EmailReasoningSystem, GraphState
 import logging
 
 logging.basicConfig(level=logging.INFO)
 
-def demo_with_sample_email():
-    """Demo với email mẫu"""
+def test_with_sample_email():
+    """Test with a sample email"""
     
-    # Email mẫu để test
+    # Sample email for testing
     sample_email = {
-        'id': 'demo_123',
-        'subject': 'Hỏi về dự án TikTok',
+        'id': 'test_123',
+        'subject': 'Hỏi về dự án website',
         'from': 'client@example.com',
         'date': 'Mon, 1 Jan 2024 10:00:00 +0700',
-        'body': 'Chào bạn, tôi muốn hỏi về tiến độ dự án chia sẻ video TikTok. Khi nào có thể hoàn thành?',
-        'snippet': 'Hỏi về tiến độ dự án TikTok'
+        'body': 'Chào bạn, tôi muốn hỏi về tiến độ dự án website của chúng ta. Khi nào có thể hoàn thành?',
+        'snippet': 'Hỏi về tiến độ dự án website'
     }
     
-    # Tạo workflow
-    app = create_reasoning_workflow()
-    
-    # State với email mẫu
-    initial_state = EmailReasoningState(
-        new_email=sample_email,
-        relevant_emails=[],
-        context="",
-        draft_reply="",
-        final_reply="",
-        confidence_score=0.0
-    )
-    
-    # Chạy từ bước tìm kiếm (bỏ qua read_email)
-    print("🧪 DEMO: Chạy với email mẫu")
-    
-    # Tạo system để test manual
-    from email_reasoning_system import EmailReasoningSystem
+    # Initialize system
     system = EmailReasoningSystem()
     
-    # Chạy từng bước
-    state = initial_state
-    state = system.find_relevant_past_emails(state)
-    state = system.create_context(state)
-    state = system.draft_reply_with_llm(state)
-    state = system.review_draft(state)
+    # Test individual steps
+    state = GraphState(
+        new_email_id="test_123",
+        user_id="me",
+        email_content=sample_email,
+        context_emails=[],
+        draft_reply={},
+        error=""
+    )
     
-    # Hiển thị kết quả
+    # Test context retrieval
+    print("🧪 Testing context retrieval...")
+    state = system.retrieve_context_node(state)
+    
+    # Test reply generation
+    print("🧪 Testing LLAMA 3 reply generation...")
+    state = system.generate_reply_node(state)
+    
+    # Display results
     print("\n" + "="*50)
-    print("📧 KẾT QUẢ DEMO")
+    print("📧 TEST RESULTS")
     print("="*50)
-    print(f"Email gốc: {sample_email['subject']}")
-    print(f"Từ: {sample_email['from']}")
-    print(f"Nội dung: {sample_email['body']}")
-    print(f"\n🔍 Tìm thấy: {len(state['relevant_emails'])} email liên quan")
-    print(f"\n🤖 Bản nháp trả lời (Confidence: {state['confidence_score']:.1%}):")
-    print("-" * 30)
-    print(state['final_reply'])
-    print("-" * 30)
+    print(f"Original email: {sample_email['subject']}")
+    print(f"From: {sample_email['from']}")
+    print(f"Content: {sample_email['body']}")
+    print(f"\n🔍 Found: {len(state['context_emails'])} relevant emails")
+    
+    if state.get('draft_reply'):
+        print(f"\n🤖 Generated reply:")
+        print(f"Subject: {state['draft_reply']['subject']}")
+        print("-" * 30)
+        print(state['draft_reply']['body'])
+        print("-" * 30)
+    
+    if state.get('error'):
+        print(f"\n❌ Error: {state['error']}")
 
 if __name__ == "__main__":
-    demo_with_sample_email()
+    test_with_sample_email()
