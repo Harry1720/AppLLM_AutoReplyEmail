@@ -304,11 +304,22 @@ Nội dung:
             email_content = state["email_content"]
             draft_reply = state["draft_reply"]
             
+            # Clean the recipient email address
+            recipient = email_content["from"]
+            import re
+            email_match = re.search(r'<([^>]+)>', recipient)
+            if email_match:
+                clean_recipient = email_match.group(1)
+            else:
+                clean_recipient = recipient.strip()
+            
+            logging.info(f"Creating draft to: {clean_recipient}")
+            
             # Create draft message
             draft_message = {
                 'message': {
                     'raw': self._create_message(
-                        to=email_content["from"],
+                        to=clean_recipient,  # Use cleaned email
                         subject=draft_reply["subject"],
                         body=draft_reply["body"]
                     )
