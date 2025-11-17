@@ -102,6 +102,7 @@ class EmailReasoningSystem:
             subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
             sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'No Sender')
             date = next((h['value'] for h in headers if h['name'].lower() == 'date'), 'No Date')
+            message_id = next((h['value'] for h in headers if h['name'].lower() == 'message-id'), '')
             
             # Extract body
             body = self._extract_email_body(msg['payload'])
@@ -112,7 +113,9 @@ class EmailReasoningSystem:
                 'from': sender,
                 'date': date,
                 'body': body,
-                'snippet': msg.get('snippet', '')
+                'snippet': msg.get('snippet', ''),
+                'message_id': message_id,  # Add message ID for threading
+                'thread_id': msg.get('threadId', email_id)  # Add thread ID
             }
             
             logging.info(f"✓ Retrieved email: {subject}")
@@ -295,8 +298,8 @@ Nội dung:
             return {**state, "error": f"Error generating reply: {e}"}
 
     def create_draft_node(self, state: GraphState) -> GraphState:
-        """Node to create draft in Gmail"""
-        logging.info("--- STEP 4: CREATE DRAFT IN GMAIL ---")
+        """Node to create draft reply in Gmail thread"""
+        logging.info("--- STEP 4: CREATE DRAFT REPLY IN GMAIL THREAD ---")
         try:
             if not state.get("email_content") or not state.get("draft_reply"):
                 return {**state, "error": "Missing email content or draft reply"}
@@ -313,16 +316,19 @@ Nội dung:
             else:
                 clean_recipient = recipient.strip()
             
-            logging.info(f"Creating draft to: {clean_recipient}")
+            logging.info(f"Creating draft reply to: {clean_recipient}")
             
-            # Create draft message
+            # Create draft message with thread ID and In-Reply-To headers
             draft_message = {
                 'message': {
-                    'raw': self._create_message(
-                        to=clean_recipient,  # Use cleaned email
+                    'raw': self._create_reply_message(
+                        to=clean_recipient,
                         subject=draft_reply["subject"],
-                        body=draft_reply["body"]
-                    )
+                        body=draft_reply["body"],
+                        original_message_id=email_content.get("message_id", ""),
+                        thread_id=email_content["id"]  # Use email ID as thread reference
+                    ),
+                    'threadId': email_content["id"]  # Specify thread ID
                 }
             }
             
@@ -332,20 +338,29 @@ Nội dung:
                 body=draft_message
             ).execute()
             
-            logging.info(f"✓ Created draft with ID: {draft['id']}")
+            logging.info(f"✓ Created draft reply with ID: {draft['id']} in thread")
             return {**state, "draft_id": draft['id']}
             
         except Exception as e:
-            logging.error(f"Error creating draft: {str(e)}")
-            return {**state, "error": f"Error creating draft: {e}"}
+            logging.error(f"Error creating draft reply: {str(e)}")
+            return {**state, "error": f"Error creating draft reply: {e}"}
 
-    def _create_message(self, to, subject, body):
-        """Create a message for Gmail API"""
+    def _create_reply_message(self, to, subject, body, original_message_id="", thread_id=""):
+        """Create a reply message for Gmail API with proper threading"""
         import email.mime.text
+        from email.utils import make_msgid
         
         message = email.mime.text.MIMEText(body)
         message['to'] = to
         message['subject'] = subject
+        
+        # Add threading headers for proper reply chain
+        if original_message_id:
+            message['In-Reply-To'] = original_message_id
+            message['References'] = original_message_id
+        
+        # Generate message ID
+        message['Message-ID'] = make_msgid()
         
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
         return raw_message
