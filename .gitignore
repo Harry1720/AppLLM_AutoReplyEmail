@@ -1,0 +1,15 @@
+# Python virtual environment
+venv/
+
+# Credentials & tokens
+credentials.json
+token.pickle
+.env
+
+# Cache & misc
+__pycache__/
+*.pyc
+
+vector_db/
+*.bin
+*.sqlite3
