@@ -21,4 +21,7 @@ python-dotenv
 # LangGraph
 langgraph
 
-
+# Document processing
+python-docx
+PyMuPDF
+pdfplumber
