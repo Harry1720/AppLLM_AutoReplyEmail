@@ -1,9 +1,9 @@
 import os
 import sys
 import logging
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase.client import Client, create_client
@@ -15,73 +15,129 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', date
 # Tải biến môi trường (.env)
 load_dotenv()
 
-def process_emails():
-    # 1. KHỞI TẠO HÀM EMBEDDINGS (Giữ nguyên)
-    logging.info("🚀 Khởi tạo mô hình embeddings (HuggingFace)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
+class EmailVectorizer:
+    def __init__(self, user_id: str):
+        self.user_id = user_id
+        
+        # Khởi tạo embeddings
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
 
-    # 2. KHỞI TẠO BỘ CHIA VĂN BẢN (Giữ nguyên)
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100,
-        separators=["\n\n", "\n", ".", "!", "?", " ", ""]
-    )
-    
-    # 3. LẤY EMAILS TỪ GMAIL
-    logging.info("📧 Đang lấy email đã gửi từ Gmail...")
-    try:
-        emails = get_sent_emails()
-        logging.info(f"✓ Lấy được {len(emails)} email.")
-        if not emails:
-            logging.warning("Không tìm thấy email nào. Dừng lại.")
-            return
-    except Exception as e:
-        logging.error(f"❌ Lỗi khi gọi get_sent_emails(): {e}")
-        return
+        # Khởi tạo bộ chia văn bản
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800,
+            chunk_overlap=100,
+            separators=["\n\n", "\n", ".", "!", "?", " ", ""]
+        )
+        
+        # Khởi tạo Supabase
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            logging.error("❌ SUPABASE_URL và SUPABASE_SERVICE_KEY chưa được đặt trong .env")
+            sys.exit(1)
 
-    # 4. KẾT NỐI VỚI SUPABASE CLOUD (THAY THẾ CHROMA)
-    logging.info("☁️ Đang kết nối tới Supabase Cloud...")
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_KEY")
-    
-    if not supabase_url or not supabase_key:
-        logging.error("❌ Lỗi: SUPABASE_URL và SUPABASE_SERVICE_KEY chưa được đặt trong .env")
-        sys.exit(1) # Dừng hẳn
+        self.supabase_client = create_client(supabase_url, supabase_key)
+        
+        # Khởi tạo vector store
+        self.vectorstore = SupabaseVectorStore(
+            client=self.supabase_client,
+            embedding=self.embeddings,
+            table_name="documents",
+            query_name="match_documents"
+        )
 
-    try:
-        supabase_client: Client = create_client(supabase_url, supabase_key)
-        logging.info("✓ Kết nối Supabase thành công.")
-    except Exception as e:
-        logging.error(f"❌ Lỗi khi kết nối Supabase: {e}")
-        return
-
-    # 5. [TÙY CHỌN] XÓA DỮ LIỆU CŨ (Giống logic xóa folder)
-    logging.info("🗑️ Đang xóa dữ liệu cũ trên bảng 'documents'...")
-    # Xóa tất cả các hàng có id không phải là UUID rỗng (xóa tất cả)
-    supabase_client.table("documents").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
-    logging.info("✓ Xóa dữ liệu cũ thành công.")
-
-
-    # 6. KHỞI TẠO SUPABASE VECTOR STORE (THAY THẾ CHROMA)
-    vectorstore = SupabaseVectorStore(
-        client=supabase_client,
-        embedding=embeddings,
-        table_name="documents",      # Tên bảng bạn tạo ở SQL
-        query_name="match_documents" # Tên hàm bạn tạo ở SQL
-    )
-
-    # 7. XỬ LÝ VÀ NẠP DỮ LIỆU LÊN CLOUD
-    logging.info("⏳ Bắt đầu vector hóa và nạp (upload) dữ liệu...")
-    count_chunks = 0
-    total_emails = len(emails)
-    
-    for i, email in enumerate(emails):
+    def get_user_last_sync(self) -> datetime:
+        """Lấy thời gian đồng bộ lần cuối của người dùng"""
         try:
-            logging.info(f"  -> Đang xử lý email {i+1}/{total_emails}: {email['subject'][:40]}...")
+            result = self.supabase_client.table("users").select("last_synced_at").eq("id", self.user_id).execute()
+            if result.data and result.data[0].get("last_synced_at"):
+                return datetime.fromisoformat(result.data[0]["last_synced_at"].replace("Z", "+00:00"))
+            return datetime(1970, 1, 1, tzinfo=timezone.utc)  # Thời gian khởi tạo cho lần đồng bộ đầu tiên
+        except Exception as e:
+            logging.warning(f"Lỗi khi lấy thời gian đồng bộ lần cuối: {e}")
+            return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def update_user_last_sync(self):
+        """Cập nhật thời gian đồng bộ lần cuối của người dùng"""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            self.supabase_client.table("users").update({"last_synced_at": now}).eq("id", self.user_id).execute()
+            logging.info("✓ Đã cập nhật thời gian đồng bộ lần cuối của người dùng")
+        except Exception as e:
+            logging.warning(f"Lỗi khi cập nhật thời gian đồng bộ: {e}")
+
+    def get_existing_email_ids(self) -> set:
+        """Lấy danh sách ID email đã tồn tại của người dùng"""
+        try:
+            result = self.supabase_client.table("documents").select("metadata").eq("metadata->>user_id", self.user_id).execute()
+            existing_ids = set()
+            for row in result.data:
+                if row.get("metadata", {}).get("email_id"):
+                    existing_ids.add(row["metadata"]["email_id"])
+            return existing_ids
+        except Exception as e:
+            logging.warning(f"Lỗi khi lấy danh sách ID email đã tồn tại: {e}")
+            return set()
+
+    def filter_new_emails(self, emails: list, last_sync: datetime) -> list:
+        """Lọc ra các email mới kể từ lần đồng bộ cuối"""
+        existing_ids = self.get_existing_email_ids()
+        new_emails = []
+        
+        for email in emails:
+            email_id = email.get('id', f'unknown_{len(new_emails)}')
             
-            full_content = f"""
+            # Bỏ qua nếu đã tồn tại
+            if email_id in existing_ids:
+                continue
+            
+            new_emails.append(email)
+        
+        return new_emails
+
+    def sync_user_emails(self, incremental: bool = True):
+        """Đồng bộ email cho một người dùng cụ thể"""
+        logging.info(f"🚀 Bắt đầu đồng bộ email cho người dùng: {self.user_id}")
+        
+        # Lấy thời gian đồng bộ lần cuối nếu là đồng bộ gia tăng
+        last_sync = None
+        if incremental:
+            last_sync = self.get_user_last_sync()
+            logging.info(f"Lần đồng bộ cuối: {last_sync}")
+
+        # Lấy email
+        logging.info("📧 Đang lấy email đã gửi...")
+        try:
+            all_emails = get_sent_emails()
+            logging.info(f"✓ Đã lấy {len(all_emails)} email đã gửi")
+        except Exception as e:
+            logging.error(f"❌ Lỗi khi lấy email: {e}")
+            return
+
+        # Lọc email mới
+        if incremental:
+            emails_to_process = self.filter_new_emails(all_emails, last_sync)
+            logging.info(f"📊 Tìm thấy {len(emails_to_process)} email mới để xử lý")
+        else:
+            emails_to_process = all_emails
+            logging.info(f"📊 Đang xử lý tất cả {len(emails_to_process)} email (đồng bộ đầy đủ)")
+
+        if not emails_to_process:
+            logging.info("✅ Không có email mới để xử lý")
+            return
+
+        # Xử lý email
+        logging.info("⏳ Bắt đầu vector hóa...")
+        count_chunks = 0
+        
+        for i, email in enumerate(emails_to_process):
+            try:
+                logging.info(f"  -> Đang xử lý email {i+1}/{len(emails_to_process)}: {email['subject'][:40]}...")
+                
+                full_content = f"""
 From: {email['from']}
 To: {email['to']}
 Subject: {email['subject']}
@@ -89,32 +145,59 @@ Date: {email['date']}
 
 {email['body']}
 """
-            chunks = text_splitter.split_text(full_content)
-            
-            metadatas = [{
-                "email_id": email.get('id', f'unknown_{i}'),
-                "subject": email.get('subject', 'No Subject'),
-                "from": email.get('from', 'Unknown Sender'),
-                "to": email.get('to', 'Unknown Recipient'),
-                "date": email.get('date', 'No Date'),
-                "chunk_id": chunk_index
-            } for chunk_index in range(len(chunks))]
+                chunks = self.text_splitter.split_text(full_content)
+                
+                # Tạo metadata với user_id
+                metadatas = [{
+                    "user_id": self.user_id,  # Quan trọng: Thêm user_id vào metadata
+                    "email_id": email.get('id', f'unknown_{i}'),
+                    "subject": email.get('subject', 'Không có tiêu đề'),
+                    "from": email.get('from', 'Người gửi không xác định'),
+                    "to": email.get('to', 'Người nhận không xác định'),
+                    "date": email.get('date', 'Không có ngày'),
+                    "chunk_id": chunk_index
+                } for chunk_index in range(len(chunks))]
 
-            # NẠP DỮ LIỆU LÊN SUPABASE (Bỏ `ids=ids`)
-            vectorstore.add_texts(texts=chunks, metadatas=metadatas)
-            
-            count_chunks += len(chunks)
-        except Exception as e:
-            logging.warning(f"  ⚠️ Lỗi khi xử lý email ID {email.get('id')}: {e}")
-            # Bỏ qua email này và tiếp tục
+                # Thêm vào vector store
+                self.vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+                count_chunks += len(chunks)
+                
+            except Exception as e:
+                logging.warning(f"  ⚠️ Lỗi khi xử lý email {email.get('id')}: {e}")
 
-    # 8. HOÀN THÀNH (Bỏ `vectorstore.persist()`)
-    logging.info("\n" + "="*30)
-    logging.info("✅ HOÀN THÀNH!")
-    logging.info(f"Đã vector hóa {total_emails} email thành {count_chunks} chunks.")
-    logging.info("Dữ liệu đã được lưu trên Supabase Cloud (dùng 384 chiều).")
-    logging.info("="*30)
-    return vectorstore
+        # Cập nhật thời gian đồng bộ lần cuối
+        if incremental:
+            self.update_user_last_sync()
+
+        # Kết quả
+        logging.info("\n" + "="*50)
+        logging.info("✅ ĐỒNG BỘ EMAIL HOÀN TẤT!")
+        logging.info(f"ID người dùng: {self.user_id}")
+        logging.info(f"Số lượng email đã xử lý: {len(emails_to_process)}")
+        logging.info(f"Số lượng chunks đã tạo: {count_chunks}")
+        logging.info(f"Loại đồng bộ: {'Gia tăng' if incremental else 'Đầy đủ'}")
+        logging.info("="*50)
+
+def sync_user_emails_api(user_id: str, full_sync: bool = False):
+    """Hàm API để đồng bộ email người dùng"""
+    try:
+        vectorizer = EmailVectorizer(user_id)
+        vectorizer.sync_user_emails(incremental=not full_sync)
+        return {"success": True, "message": "Đã hoàn thành đồng bộ email"}
+    except Exception as e:
+        logging.error(f"Đồng bộ email thất bại cho người dùng {user_id}: {e}")
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
-    process_emails()
+    # Ví dụ sử dụng
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Cách sử dụng: python email_vectorizer_improved.py <user_id> [--full-sync]")
+        sys.exit(1)
+    
+    user_id = sys.argv[1]
+    full_sync = "--full-sync" in sys.argv
+    
+    result = sync_user_emails_api(user_id, full_sync)
+    print(f"Kết quả: {result}")
