@@ -10,34 +10,53 @@ class GmailService:
         self.service = build('gmail', 'v1', credentials=self.creds)
 
     # --- READ (Đọc danh sách Email) ---
-    def get_emails(self, max_results=10):
+    def get_emails(self, max_results=10, page_token=None):
         try:
-            # Gọi API lấy danh sách ID tin nhắn
-            results = self.service.users().messages().list(
-                userId='me', maxResults=max_results
-            ).execute()
-            messages = results.get('messages', [])
+            print(f"🚀 Đang lấy email. Limit: {max_results}, Page Token: {page_token}")
             
+            # Gọi API
+            results = self.service.users().messages().list(
+                userId='me', 
+                maxResults=max_results,
+                labelIds=['INBOX'],
+                pageToken=page_token # <--- QUAN TRỌNG: Bên trái là tên Google, bên phải là biến của mình
+            ).execute()
+            
+            messages = results.get('messages', [])
+            next_token = results.get('nextPageToken') # Lấy token trang sau (nếu có)
+            
+            print(f"✅ Tìm thấy {len(messages)} email. Next Token: {next_token}")
+
             email_list = []
-            # Lấy chi tiết từng mail (snippet, tiêu đề)
-            for msg in messages:
-                msg_detail = self.service.users().messages().get(
-                    userId='me', id=msg['id'], format='metadata'
-                ).execute()
-                
-                # Trích xuất tiêu đề (Subject) từ headers
-                headers = msg_detail['payload']['headers']
-                subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '(No Subject)')
-                
-                email_list.append({
-                    "id": msg['id'],
-                    "snippet": msg_detail.get('snippet'),
-                    "subject": subject
-                })
-            return email_list
+            if messages:
+                for msg in messages:
+                    try:
+                        # Lấy chi tiết (dùng format metadata cho nhẹ)
+                        msg_detail = self.service.users().messages().get(
+                            userId='me', id=msg['id'], format='metadata'
+                        ).execute()
+                        
+                        headers = msg_detail['payload']['headers']
+                        subject = next((h['value'] for h in headers if h['name'] == 'Subject'), '(No Subject)')
+                        
+                        email_list.append({
+                            "id": msg['id'],
+                            "snippet": msg_detail.get('snippet'),
+                            "subject": subject
+                        })
+                    except Exception:
+                        continue 
+
+            # Trả về cấu trúc mới gồm cả DATA và TOKEN
+            return {
+                "emails": email_list,
+                "next_page_token": next_token
+            }
+
         except Exception as e:
-            print(f"Lỗi đọc email: {e}")
-            return []
+            print(f"❌ Lỗi đọc email: {e}")
+            # Trả về rỗng để không bị sập app
+            return {"emails": [], "next_page_token": None}
 
     # --- CREATE (Gửi Email) ---
     def send_email(self, to_email, subject, body_content):

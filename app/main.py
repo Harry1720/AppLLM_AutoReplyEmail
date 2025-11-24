@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.api.auth_router import router as auth_router
-
+from app.api.email_router import email_router
 app = FastAPI(
     title="My FastAPI App",
     description="Demo FastAPI with Swagger UI",
@@ -9,6 +9,7 @@ app = FastAPI(
 
 # Include router
 app.include_router(auth_router)
+app.include_router(email_router)
 
 @app.get("/")
 def read_root():
