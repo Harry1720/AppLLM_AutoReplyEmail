@@ -258,9 +258,14 @@ class EmailReasoningSystem:
             # Note: You'll need to modify the Supabase function to support user filtering
             similar_docs = self.vectorstore.similarity_search_with_score(
                 query_text, 
-                k=3,
-                filter={"user_id": self.user_id}  # Filter by user_id
+                k=5,  # Tăng từ 3 lên 5 để có nhiều context hơn
+                # Supabase filter syntax
+                filter=f"metadata->>'user_id' = '{self.user_id}'"
             )
+            
+            if not similar_docs:
+                logging.warning(f"No context found for user {self.user_id}")
+                return {**state, "context_emails": []}
             
             context_emails = []
             seen_email_ids = set()
@@ -374,7 +379,10 @@ Nội dung:
                 # Fallback response
                 draft_reply = {
                     "subject": f"Re: {current_email['subject']}",
-                    "body": "Chào bạn,\n\nCảm ơn bạn đã liên hệ. Tôi đã nhận được email của bạn và sẽ phản hồi sớm nhất có thể.\n\nTrân trọng!"
+                    "body": f"""Chào {current_email['from'].split('@')[0]},
+Cảm ơn bạn đã liên hệ về "{current_email['subject']}". 
+Tôi đã nhận được thông tin và sẽ xem xét kỹ để phản hồi bạn sớm nhất có thể.
+Trân trọng,"""
                 }
                 return {**state, "draft_reply": draft_reply}
             
@@ -427,7 +435,9 @@ Nội dung:
             
         except Exception as e:
             logging.error(f"Error creating draft reply: {str(e)}")
-            return {**state, "error": f"Error creating draft reply: {e}"}
+            # Cũng cần tăng counter khi có lỗi để tránh vòng lặp vô tận
+            processed_count = state.get("processed_count", 0) + 1
+            return {**state, "error": f"Error creating draft reply: {e}", "processed_count": processed_count}
 
     def _save_draft_to_db(self, email_content: dict, draft_reply: dict, draft_id: str):
         """Save draft information to database"""
@@ -564,4 +574,4 @@ def main(user_id: str = "default_user"):
         return None
 
 if __name__ == "__main__":
-    result = main("user_123")  # Replace with actual user ID
+    result = main("bde57426-822d-4d41-8ad6-4a036fc6dc82")  # Replace with actual user ID
