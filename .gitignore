@@ -4,7 +4,6 @@ venv/
 # Credentials & tokens
 credentials.json
 token.pickle
-.env
 
 # Cache & misc
 __pycache__/
