@@ -47,3 +47,15 @@ def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
         return {"message": "Đã chuyển email vào thùng rác thành công"}
     
     raise HTTPException(status_code=500, detail="Xóa thất bại (Vui lòng kiểm tra quyền gmail.modify)")
+
+# 4. API LẤY CHI TIẾT 1 EMAIL
+@email_router.get("/emails/{msg_id}")
+def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    
+    email_detail = service.get_email_detail(msg_id)
+    
+    if email_detail:
+        return {"data": email_detail}
+    
+    raise HTTPException(status_code=404, detail="Không tìm thấy email hoặc lỗi khi đọc")
