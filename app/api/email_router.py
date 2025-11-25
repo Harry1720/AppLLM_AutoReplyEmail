@@ -1,37 +1,39 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, Form
 from app.infra.services.gmail_service import GmailService 
-from typing import Optional
+from typing import Optional, List
 from app.api.deps import get_token_dependency
+from app.core.enums import EmailFolder, EmailStatus
 email_router = APIRouter()
 from typing import Optional
 
 # 1. API Đọc danh sách (Read)
 @email_router.get("/emails")
 def list_user_emails(
-    limit: int = Query(10, description="Số lượng mail"),
-    page_token: Optional[str] = Query(None, description="Token trang tiếp theo"),
+    limit: int = Query(10, description="Số lượng email muốn lấy"),
+    page_token: Optional[str] = Query(None, description="Mã token của trang tiếp theo"),
+    folder: EmailFolder = Query(EmailFolder.INBOX, description="Chọn thư mục (INBOX, SENT, ARCHIVE...)"),
+    status: EmailStatus = Query(EmailStatus.ALL, description="Lọc trạng thái (UNREAD, STARRED...)"),
     token_data: dict = Depends(get_token_dependency)
 ): 
     service = GmailService(token_data)
     
-    # Gọi service
-    result = service.get_emails(max_results=limit, page_token=page_token)
-    
-    # Kết quả trả về sẽ là:
-    # {
-    #   "emails": [...],
-    #   "next_page_token": "..."
-    # }
-    return result
+    # Gọi service truyền các tham số lọc
+    # folder.value và status.value dùng để lấy chuỗi text thực tế (vd: "INBOX")
+    return service.get_emails(
+        max_results=limit, 
+        page_token=page_token,
+        folder=folder.value,
+        status=status.value
+    )
 
 # 2. API Gửi mail (Create)
-@email_router.post("/emails/send")
-def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
-    service = GmailService(token_data)
-    result = service.send_email(to, subject, body)
-    if result:
-        return {"message": "Gửi thành công", "id": result['id']}
-    raise HTTPException(status_code=500, detail="Gửi thất bại")
+# @email_router.post("/emails/send")
+# def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
+#     service = GmailService(token_data)
+#     result = service.send_email(to, subject, body)
+#     if result:
+#         return {"message": "Gửi thành công", "id": result['id']}
+#     raise HTTPException(status_code=500, detail="Gửi thất bại")
 
 # 3. API Xóa mail (Delete)
 @email_router.delete("/emails/{msg_id}")
@@ -59,3 +61,60 @@ def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependenc
         return {"data": email_detail}
     
     raise HTTPException(status_code=404, detail="Không tìm thấy email hoặc lỗi khi đọc")
+
+# 5. API Gửi mail kèm tệp đính kèm (Create with Attachments)
+@email_router.post("/emails/send")
+async def send_user_email(
+    to: str = Form(..., description="Email người nhận"),
+    subject: str = Form(..., description="Tiêu đề"),
+    body: str = Form(..., description="Nội dung"),
+    files: List[UploadFile] = File(None, description="Chọn file đính kèm"), 
+    token_data: dict = Depends(get_token_dependency)
+):
+    service = GmailService(token_data)
+    
+    # Xử lý file upload
+    attachment_list = []
+    if files:
+        for file in files:
+            content = await file.read() # Đọc file thành bytes
+            attachment_list.append({
+                "filename": file.filename,
+                "content": content,
+                "content_type": file.content_type
+            })
+
+    # Gọi service gửi
+    result = service.send_email(to, subject, body, attachments=attachment_list)
+    
+    if result:
+        return {"message": "Gửi thành công", "id": result['id']}
+    
+    raise HTTPException(status_code=500, detail="Gửi thất bại")
+
+# 5. API LƯU TRỮ (Archive)
+@email_router.post("/emails/{msg_id}/archive")
+def archive_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    success = service.archive_email(msg_id)
+    if success:
+        return {"message": "Đã lưu trữ email (Archived)"}
+    raise HTTPException(status_code=500, detail="Lưu trữ thất bại")
+
+# 6. API GẮN SAO (Star)
+@email_router.post("/emails/{msg_id}/star")
+def star_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    success = service.star_email(msg_id)
+    if success:
+        return {"message": "Đã gắn sao thành công ⭐"}
+    raise HTTPException(status_code=500, detail="Gắn sao thất bại")
+
+# 7. API BỎ SAO (Unstar)
+@email_router.delete("/emails/{msg_id}/star")
+def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    success = service.unstar_email(msg_id)
+    if success:
+        return {"message": "Đã bỏ sao thành công"}
+    raise HTTPException(status_code=500, detail="Bỏ sao thất bại")
