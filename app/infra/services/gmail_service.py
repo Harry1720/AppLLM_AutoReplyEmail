@@ -157,7 +157,7 @@ class GmailService:
             message['subject'] = subject
 
             # Đính kèm nội dung chữ
-            msg_text = MIMEText(body_content, 'html')
+            msg_text = MIMEText(body_content, 'html', 'utf-8')
             message.attach(msg_text)
 
             # Xử lý file đính kèm (nếu có)
