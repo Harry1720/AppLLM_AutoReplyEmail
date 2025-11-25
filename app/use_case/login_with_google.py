@@ -38,7 +38,7 @@ class LoginWithGoogleUseCase:
                     "https://www.googleapis.com/auth/gmail.send",
                     "https://www.googleapis.com/auth/gmail.modify"
                 ],
-                redirect_uri="http://localhost:8000" 
+                redirect_uri="http://localhost:3000/auth/callback" 
             )
 
             # 2. Đổi Code lấy Token
