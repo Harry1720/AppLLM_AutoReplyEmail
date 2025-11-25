@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from app.api.auth_router import router as auth_router
 from app.api.email_router import email_router
 app = FastAPI(
@@ -13,6 +14,6 @@ app.include_router(email_router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello FastAPI"}
+    return RedirectResponse(url="/docs")
 
 
