@@ -85,58 +85,85 @@ class EmailReasoningSystem:
             logging.warning(f"Lỗi RAG: {e}")
             return {**state, "context_emails": []}
 
-    # --- NODE 3: VIẾT TRẢ LỜI (OLLAMA) ---
+   # --- NODE 3: VIẾT TRẢ LỜI (OLLAMA) - ĐÃ NÂNG CẤP ---
     def generate_reply_node(self, state: GraphState) -> GraphState:
         email = state.get("current_email")
         if not email: return state
         
         logging.info("🧠 Ollama đang suy nghĩ...")
         
-        context_str = "\n---\n".join(state["context_emails"]) if state["context_emails"] else "Không có."
+        # Lấy các biến từ State
+        context_str = "\n---\n".join(state["context_emails"]) if state.get("context_emails") else "Không có văn mẫu."
+        instruction = state.get("instruction", "Hãy trả lời một cách lịch sự, chuyên nghiệp.")
 
-        template = """Bạn là trợ lý ảo chuyên nghiệp.
-        Nhiệm vụ: Soạn email trả lời bằng Tiếng Việt dựa trên thông tin sau.
+        # --- TEMPLATE CAO CẤP (Xử lý instruction + RAG) ---
+        template = """
+        VAI TRÒ:
+        Bạn là Thư ký AI riêng của tôi. Nhiệm vụ của bạn là soạn thảo email trả lời.
+
+        DỮ LIỆU ĐẦU VÀO:
         
-        VĂN PHONG THAM KHẢO:
+        1. [VĂN PHONG THAM KHẢO] (Cách tôi thường viết mail):
         {context}
-        
-        EMAIL CẦN TRẢ LỜI:
-        Từ: {sender}
-        Chủ đề: {subject}
-        Nội dung: {snippet}
-        
-        YÊU CẦU ĐẦU RA (JSON format):
+        --------------------------------------------------
+
+        2. [EMAIL CẦN TRẢ LỜI]:
+        - Người gửi: {sender}
+        - Chủ đề: {subject}
+        - Tóm tắt: {snippet}
+        - Nội dung chính: {body}
+        --------------------------------------------------
+
+        3. [YÊU CẦU CỦA TÔI] (QUAN TRỌNG NHẤT - BẮT BUỘC TUÂN THỦ):
+        "{instruction}"
+        *(Ví dụ: Nếu tôi bảo "Từ chối", bạn phải viết thư từ chối, dù văn phong tham khảo có nhiệt tình đến đâu)*.
+        --------------------------------------------------
+
+        NGUYÊN TẮC SOẠN THẢO:
+        1. NGÔN NGỮ: Email đến là tiếng gì (Anh/Việt) thì trả lời bằng tiếng đó.
+        2. GIỌNG ĐIỆU: Bắt chước cách xưng hô trong [VĂN PHONG THAM KHẢO]. Nếu không có, dùng giọng lịch sự.
+        3. TRUNG THỰC: Tuyệt đối KHÔNG tự bịa ra ngày giờ, số điện thoại. Nếu thiếu thông tin, hãy để: [ĐIỀN NGÀY], [ĐIỀN SỐ]...
+
+        ĐỊNH DẠNG ĐẦU RA (JSON FORMAT ONLY):
+        Chỉ trả về chuỗi JSON, không giải thích thêm.
         {{
-            "subject": "Tiêu đề thư trả lời (có Re:)",
-            "body": "Nội dung thư trả lời (lịch sự, ngắn gọn)"
+            "subject": "Tiêu đề thư trả lời (Thường bắt đầu bằng Re: ...)",
+            "body": "Nội dung thư (định dạng HTML cơ bản, xuống dòng dùng <br>)"
         }}
         """
         
+        # Format dữ liệu vào Template
         prompt = PromptTemplate.from_template(template).format(
             context=context_str,
             sender=email['from'],
             subject=email['subject'],
-            snippet=email['snippet']
+            snippet=email['snippet'],
+            # Lấy 1500 ký tự đầu của Body để AI hiểu sâu hơn (nếu có)
+            body=email.get('body', '')[:1500], 
+            instruction=instruction # <--- Truyền yêu cầu (Đồng ý/Từ chối) vào đây
         )
         
         try:
+            # Gọi Ollama
             response = self.llm.invoke(prompt)
             
-            # Xử lý chuỗi JSON từ Ollama (đôi khi nó kèm markdown ```json)
+            # Xử lý kết quả trả về (Lọc sạch Markdown nếu có)
+            # Ollama hay trả về kiểu: ```json { ... } ``` nên cần clean
             response_clean = str(response).strip()
             if response_clean.startswith('```json'):
                 response_clean = response_clean[7:]
             if response_clean.endswith('```'):
                 response_clean = response_clean[:-3]
                 
-            draft = json.loads(response_clean)
+            draft = json.loads(response_clean.strip())
             return {**state, "draft_reply": draft}
             
         except Exception as e:
-            logging.error(f"Lỗi Ollama: {e}")
+            logging.error(f"Lỗi Ollama Gen: {e}")
+            # Fallback an toàn nếu AI lỗi
             return {**state, "draft_reply": {
                 "subject": f"Re: {email['subject']}",
-                "body": "Xin lỗi, AI gặp lỗi khi xử lý định dạng JSON."
+                "body": f"Chào bạn,<br>Tôi đã nhận được email về việc: {instruction}.<br>Tôi sẽ phản hồi sớm.<br>Trân trọng."
             }}
 
     # --- NODE 4: TẠO BẢN NHÁP ---
