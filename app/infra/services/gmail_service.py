@@ -6,6 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
+from email.utils import parseaddr
 from email import encoders
 
 class GmailService:
@@ -344,59 +345,138 @@ class GmailService:
             return False
             
 
-    # --- HÀM TRẢ LỜI EMAIL (Reply) ---
+  # app/infra/services/gmail_service.py
+    from email.utils import parseaddr # Nhớ import
+
     def reply_email(self, original_msg_id, body_content, attachments=None):
         try:
-            # 1. Lấy thông tin email gốc để biết gửi cho ai và Thread nào
-            original_msg = self.service.users().messages().get(
-                userId='me', id=original_msg_id, format='metadata'
-            ).execute()
-            
-            headers = {h['name']: h['value'] for h in original_msg['payload']['headers']}
-            
-            # Lấy người nhận (Reply-To hoặc From)
-            reply_to = headers.get('Reply-To', headers.get('From'))
-            
-            # Xử lý tiêu đề (Thêm Re: nếu chưa có)
-            subject = headers.get('Subject', '')
-            if not subject.lower().startswith('re:'):
-                subject = f"Re: {subject}"
-            
-            thread_id = original_msg.get('threadId')
-            msg_id_header = headers.get('Message-ID')
+            print(f"🚀 Đang chuẩn bị Reply email: {original_msg_id}")
 
-            # 2. Tạo nội dung thư
+            # 1. Lấy thông tin email gốc
+            try:
+                original_msg = self.service.users().messages().get(
+                    userId='me', id=original_msg_id, format='metadata'
+                ).execute()
+            except Exception as e:
+                print(f"❌ Lỗi bước 1 (Lấy email gốc): ID có thể sai. {e}")
+                raise ValueError("Không tìm thấy email gốc (Sai ID?)")
+
+            # 2. Xử lý Headers
+            try:
+                payload = original_msg.get('payload', {})
+                headers_list = payload.get('headers', [])
+                headers = {h['name']: h['value'] for h in headers_list}
+                
+                # Lấy người nhận
+                reply_to_raw = headers.get('Reply-To', headers.get('From', ''))
+                name, clean_email = parseaddr(reply_to_raw)
+                
+                if not clean_email:
+                    print(f"⚠️ Không tìm thấy email trong: {reply_to_raw}")
+                    # Fallback: Cố gắng lấy từ header khác hoặc báo lỗi rõ ràng
+                    raise ValueError(f"Không lấy được địa chỉ người nhận từ: {reply_to_raw}")
+
+                print(f"📧 Sẽ gửi tới: {clean_email}")
+
+                # Lấy Subject và ThreadId
+                subject = headers.get('Subject', '')
+                if not subject.lower().startswith('re:'):
+                    subject = f"Re: {subject}"
+                
+                thread_id = original_msg.get('threadId')
+                msg_id_header = headers.get('Message-ID')
+                
+            except Exception as e:
+                print(f"❌ Lỗi bước 2 (Xử lý header): {e}")
+                raise ValueError("Email gốc bị lỗi cấu trúc, không đọc được Header")
+
+            # 3. Tạo nội dung và Gửi
+            try:
+                message = MIMEMultipart()
+                message['to'] = clean_email
+                message['subject'] = subject
+                
+                if msg_id_header:
+                    message['In-Reply-To'] = msg_id_header
+                    message['References'] = msg_id_header
+
+                message.attach(MIMEText(body_content, 'html', 'utf-8'))
+
+                # (Code xử lý file giữ nguyên...)
+                if attachments:
+                    for file_data in attachments:
+                        # ... (Code cũ của bạn) ...
+                        pass
+
+                raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+                body = {'raw': raw}
+                
+                if thread_id:
+                    body['threadId'] = thread_id
+
+                sent_message = self.service.users().messages().send(
+                    userId='me', body=body
+                ).execute()
+                
+                print(f"✅ Đã gửi thành công! ID: {sent_message['id']}")
+                return sent_message
+
+            except Exception as e:
+                print(f"❌ Lỗi bước 3 (Gửi đi): {e}")
+                raise e
+
+        except Exception as e:
+            # Ném lỗi ra ngoài để Swagger hiển thị
+            raise e
+        
+
+    # --- HÀM CẬP NHẬT BẢN NHÁP (Edit Draft) ---
+    def update_draft(self, draft_id, to, subject, body_content):
+        try:
+            print(f"✏️ Đang chỉnh sửa draft {draft_id}...")
+
+            # 1. Đóng gói nội dung mới (Giống hệt lúc tạo/gửi)
             message = MIMEMultipart()
-            message['to'] = reply_to
+            message['to'] = to
             message['subject'] = subject
             
-            # QUAN TRỌNG: Header để Gmail biết đây là Reply
-            if msg_id_header:
-                message['In-Reply-To'] = msg_id_header
-                message['References'] = msg_id_header
-
-            message.attach(MIMEText(body_content, 'html', 'utf-8'))
-
-            # (Code xử lý file đính kèm y hệt hàm send_email - copy lại vào đây nếu cần)
-            if attachments:
-                for file_data in attachments:
-                    # ... (Copy logic từ hàm send_email) ...
-                    pass
+            # Lưu ý: Sửa draft thường chỉ sửa chữ, nên mình làm đơn giản không file
+            # Nếu muốn sửa file thì copy logic attachment từ hàm send_email qua
+            msg_text = MIMEText(body_content, 'html', 'utf-8')
+            message.attach(msg_text)
 
             raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
             
-            body = {
-                'raw': raw,
-                'threadId': thread_id # <-- Bắt buộc để gom nhóm hội thoại
-            }
-            
-            sent_message = self.service.users().messages().send(
-                userId='me', body=body
+            # 2. Gọi lệnh UPDATE
+            # Cấu trúc body của Update giống hệt Create
+            updated_draft = self.service.users().drafts().update(
+                userId='me', 
+                id=draft_id, # Phải có ID để biết sửa cái nào
+                body={'message': {'raw': raw}}
             ).execute()
             
-            print(f"✅ Đã trả lời email {original_msg_id}")
+            print(f"✅ Đã cập nhật draft thành công!")
+            return updated_draft
+
+        except Exception as e:
+            print(f"❌ Lỗi update draft: {e}")
+            return None
+        
+
+    # --- HÀM GỬI BẢN NHÁP (Release Draft) ---
+    def send_draft(self, draft_id):
+        try:
+            print(f"🚀 Đang gửi bản nháp ID: {draft_id}")
+            
+            # Lệnh này sẽ biến Draft thành Sent Message ngay lập tức
+            sent_message = self.service.users().drafts().send(
+                userId='me', 
+                body={'id': draft_id} # Chỉ cần gửi ID là đủ
+            ).execute()
+            
+            print(f"✅ Đã gửi bản nháp thành công! Message ID: {sent_message['id']}")
             return sent_message
 
         except Exception as e:
-            print(f"❌ Lỗi reply mail: {e}")
+            print(f"❌ Lỗi gửi draft: {e}")
             return None

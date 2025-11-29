@@ -153,9 +153,6 @@ def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_depen
         return {"message": "Đã đánh dấu chưa đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-# app/api/email_router.py
-
-# ...
 
 # --- API TRẢ LỜI EMAIL ---
 @email_router.post("/emails/{msg_id}/reply")
@@ -189,3 +186,36 @@ async def reply_user_email(
         return {"message": "Đã gửi câu trả lời thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Trả lời thất bại")
+
+
+# --- API CẬP NHẬT BẢN NHÁP ---
+@email_router.put("/drafts/{draft_id}")
+def update_existing_draft(
+    draft_id: str,
+    to: str = Form(..., description="Email người nhận"),
+    subject: str = Form(..., description="Tiêu đề mới"),
+    body: str = Form(..., description="Nội dung mới"),
+    token_data: dict = Depends(get_token_dependency)
+):
+    service = GmailService(token_data)
+    
+    # Gọi hàm update
+    result = service.update_draft(draft_id, to, subject, body)
+    
+    if result:
+        return {"message": "Cập nhật bản nháp thành công", "draft": result}
+    
+    raise HTTPException(status_code=500, detail="Cập nhật thất bại")
+
+
+# --- API GỬI BẢN NHÁP ĐI ---
+@email_router.post("/drafts/{draft_id}/send")
+def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    
+    result = service.send_draft(draft_id)
+    
+    if result:
+        return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
+    
+    raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")
