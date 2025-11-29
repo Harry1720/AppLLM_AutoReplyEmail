@@ -68,7 +68,7 @@ async def send_user_email(
     to: str = Form(..., description="Email người nhận"),
     subject: str = Form(..., description="Tiêu đề"),
     body: str = Form(..., description="Nội dung"),
-    files: List[UploadFile] = File(None, description="Chọn file đính kèm"), 
+    files: Optional[List[UploadFile]] = File(None, description="Chọn file đính kèm (Tùy chọn)"),
     token_data: dict = Depends(get_token_dependency)
 ):
     service = GmailService(token_data)
@@ -118,3 +118,74 @@ def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
     if success:
         return {"message": "Đã bỏ sao thành công"}
     raise HTTPException(status_code=500, detail="Bỏ sao thất bại")
+
+# --- API LẤY DANH SÁCH DRAFTS ---
+@email_router.get("/drafts")
+def list_drafts(
+    limit: int = Query(10, description="Số lượng draft muốn lấy"),
+    page_token: Optional[str] = Query(None),
+    token_data: dict = Depends(get_token_dependency)
+):
+    service = GmailService(token_data)
+    
+    # Gọi hàm mới viết
+    return service.get_drafts(max_results=limit, page_token=page_token)
+
+# app/api/email_router.py
+
+# ... (Các API cũ giữ nguyên) ...
+
+# --- API ĐÁNH DẤU ĐÃ ĐỌC ---
+@email_router.post("/emails/{msg_id}/read")
+def mark_email_as_read(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    success = service.mark_as_read(msg_id)
+    if success:
+        return {"message": "Đã đánh dấu đã đọc"}
+    raise HTTPException(status_code=500, detail="Thất bại")
+
+# --- API ĐÁNH DẤU CHƯA ĐỌC ---
+@email_router.post("/emails/{msg_id}/unread")
+def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    success = service.mark_as_unread(msg_id)
+    if success:
+        return {"message": "Đã đánh dấu chưa đọc"}
+    raise HTTPException(status_code=500, detail="Thất bại")
+
+# app/api/email_router.py
+
+# ...
+
+# --- API TRẢ LỜI EMAIL ---
+@email_router.post("/emails/{msg_id}/reply")
+async def reply_user_email(
+    msg_id: str,
+    body: str = Form(..., description="Nội dung trả lời"),
+    # 👇 SỬA DÒNG NÀY: Thêm Optional và File(None)
+    files: Optional[List[UploadFile]] = File(None, description="File đính kèm (Tùy chọn)"), 
+    token_data: dict = Depends(get_token_dependency)
+):
+    service = GmailService(token_data)
+    
+    # Xử lý file (Thêm kiểm tra if files)
+    attachment_list = []
+    
+    # 👇 QUAN TRỌNG: Kiểm tra xem user có gửi file không rồi mới lặp
+    if files: 
+        for file in files:
+            # Kiểm tra file rỗng (Swagger đôi khi gửi file rỗng nếu không chọn gì)
+            if file.filename: 
+                content = await file.read()
+                attachment_list.append({
+                    "filename": file.filename,
+                    "content": content,
+                    "content_type": file.content_type
+                })
+
+    result = service.reply_email(msg_id, body, attachments=attachment_list)
+    
+    if result:
+        return {"message": "Đã gửi câu trả lời thành công", "id": result['id']}
+    
+    raise HTTPException(status_code=500, detail="Trả lời thất bại")

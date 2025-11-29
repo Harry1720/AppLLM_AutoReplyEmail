@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from app.api.auth_router import router as auth_router
 from app.api.email_router import email_router
 from app.api.user_router import user_router
+from app.api.ai_router import ai_router
 app = FastAPI(
     title="My AutoReplyEmail App",
     description="Demo AutoReplyEmail with Swagger UI",
@@ -13,6 +14,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(email_router)
 app.include_router(user_router, tags=["User Profile"])
+app.include_router(ai_router, tags=["AI Agents"])
 
 @app.get("/")
 def read_root():

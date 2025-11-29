@@ -242,3 +242,161 @@ class GmailService:
             return True
         except Exception:
             return False
+        
+
+    # --- HÀM LẤY DANH SÁCH BẢN NHÁP (DRAFTS) ---
+    def get_drafts(self, max_results=10, page_token=None):
+        try:
+            print(f"🚀 Đang lấy Drafts. Limit: {max_results}")
+            
+            # 1. Lấy danh sách ID Drafts
+            results = self.service.users().drafts().list(
+                userId='me', 
+                maxResults=max_results,
+                pageToken=page_token
+            ).execute()
+            
+            drafts = results.get('drafts', [])
+            next_token = results.get('nextPageToken')
+            
+            if not drafts:
+                return {"drafts": [], "next_page_token": None}
+
+            # 2. Dùng Batch Request để lấy chi tiết từng Draft
+            draft_list = []
+            
+            def batch_callback(request_id, response, exception):
+                if exception:
+                    print(f"⚠️ Lỗi đọc draft {request_id}: {exception}")
+                else:
+                    try:
+                        # Cấu trúc Draft: {'id': '...', 'message': {'payload': ...}}
+                        msg = response.get('message', {})
+                        payload = msg.get('payload', {})
+                        headers_list = payload.get('headers', [])
+                        
+                        # Chuyển headers thành dict
+                        headers = {h['name']: h['value'] for h in headers_list}
+                        
+                        draft_list.append({
+                            "id": response['id'], # ID của Draft (để edit hoặc gửi)
+                            "msg_id": msg['id'],  # ID của Message bên trong
+                            "snippet": msg.get('snippet'),
+                            "subject": headers.get('Subject', '(No Subject)'),
+                            "to": headers.get('To', '(No Recipient)'), # Draft quan trọng người nhận
+                            "date": headers.get('Date', '')
+                        })
+                    except Exception as e:
+                        print(f"Lỗi parse draft: {e}")
+
+            batch = self.service.new_batch_http_request(callback=batch_callback)
+
+            for d in drafts:
+                batch.add(
+                    self.service.users().drafts().get(
+                        userId='me', 
+                        id=d['id'], 
+                        format='metadata'
+                    )
+                )
+            
+            batch.execute()
+            
+            print(f"✅ Đã tải xong {len(draft_list)} bản nháp.")
+            return {
+                "drafts": draft_list, 
+                "next_page_token": next_token
+            }
+
+        except Exception as e:
+            print(f"❌ Lỗi lấy drafts: {e}")
+            return {"drafts": [], "next_page_token": None}
+        
+
+    # --- 1. ĐÁNH DẤU ĐÃ ĐỌC (Mark as Read) ---
+    def mark_as_read(self, msg_id):
+        try:
+            # Logic: Gỡ nhãn 'UNREAD' ra khỏi email
+            self.service.users().messages().modify(
+                userId='me', 
+                id=msg_id, 
+                body={'removeLabelIds': ['UNREAD']}
+            ).execute()
+            print(f"✅ Đã đánh dấu ĐÃ ĐỌC cho email {msg_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Lỗi mark_as_read: {e}")
+            return False
+
+    # --- 2. ĐÁNH DẤU CHƯA ĐỌC (Mark as Unread) ---
+    def mark_as_unread(self, msg_id):
+        try:
+            # Logic: Thêm nhãn 'UNREAD' vào email
+            self.service.users().messages().modify(
+                userId='me', 
+                id=msg_id, 
+                body={'addLabelIds': ['UNREAD']}
+            ).execute()
+            print(f"✅ Đã đánh dấu CHƯA ĐỌC cho email {msg_id}")
+            return True
+        except Exception as e:
+            print(f"❌ Lỗi mark_as_unread: {e}")
+            return False
+            
+
+    # --- HÀM TRẢ LỜI EMAIL (Reply) ---
+    def reply_email(self, original_msg_id, body_content, attachments=None):
+        try:
+            # 1. Lấy thông tin email gốc để biết gửi cho ai và Thread nào
+            original_msg = self.service.users().messages().get(
+                userId='me', id=original_msg_id, format='metadata'
+            ).execute()
+            
+            headers = {h['name']: h['value'] for h in original_msg['payload']['headers']}
+            
+            # Lấy người nhận (Reply-To hoặc From)
+            reply_to = headers.get('Reply-To', headers.get('From'))
+            
+            # Xử lý tiêu đề (Thêm Re: nếu chưa có)
+            subject = headers.get('Subject', '')
+            if not subject.lower().startswith('re:'):
+                subject = f"Re: {subject}"
+            
+            thread_id = original_msg.get('threadId')
+            msg_id_header = headers.get('Message-ID')
+
+            # 2. Tạo nội dung thư
+            message = MIMEMultipart()
+            message['to'] = reply_to
+            message['subject'] = subject
+            
+            # QUAN TRỌNG: Header để Gmail biết đây là Reply
+            if msg_id_header:
+                message['In-Reply-To'] = msg_id_header
+                message['References'] = msg_id_header
+
+            message.attach(MIMEText(body_content, 'html', 'utf-8'))
+
+            # (Code xử lý file đính kèm y hệt hàm send_email - copy lại vào đây nếu cần)
+            if attachments:
+                for file_data in attachments:
+                    # ... (Copy logic từ hàm send_email) ...
+                    pass
+
+            raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+            
+            body = {
+                'raw': raw,
+                'threadId': thread_id # <-- Bắt buộc để gom nhóm hội thoại
+            }
+            
+            sent_message = self.service.users().messages().send(
+                userId='me', body=body
+            ).execute()
+            
+            print(f"✅ Đã trả lời email {original_msg_id}")
+            return sent_message
+
+        except Exception as e:
+            print(f"❌ Lỗi reply mail: {e}")
+            return None
