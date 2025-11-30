@@ -166,43 +166,63 @@ class EmailReasoningSystem:
                 "body": f"Chào bạn,<br>Tôi đã nhận được email về việc: {instruction}.<br>Tôi sẽ phản hồi sớm.<br>Trân trọng."
             }}
 
-    # --- NODE 4: TẠO BẢN NHÁP ---
+    # --- NODE 4: TẠO BẢN NHÁP (ĐÃ SỬA ĐỂ GẮN VÀO THREAD) ---
     def create_draft_node(self, state: GraphState) -> GraphState:
         draft = state.get("draft_reply")
         email = state.get("current_email")
         
         if draft and email:
-            logging.info("📝 Đang tạo Draft trên Gmail...")
+            logging.info("📝 Đang tạo Draft Reply trong Thread...")
             try:
-                # Lấy email người nhận
+                # 1. Lấy thông tin email gốc chi tiết hơn để có Message-ID
+                original_msg = self.gmail.users().messages().get(
+                    userId='me', 
+                    id=email['id'], 
+                    format='metadata'
+                ).execute()
+                
+                payload = original_msg.get('payload', {})
+                headers_list = payload.get('headers', [])
+                headers = {h['name']: h['value'] for h in headers_list}
+                
+                # 2. Lấy người nhận (từ người gửi email gốc)
                 recipient = email['from']
-                if '<' in recipient: recipient = recipient.split('<')[1].replace('>', '')
+                if '<' in recipient: 
+                    recipient = recipient.split('<')[1].replace('>', '')
 
-                # Tạo message raw
+                # 3. Tạo message với Thread references
                 message = MIMEText(draft['body'], 'html', 'utf-8')
                 message['to'] = recipient
                 message['subject'] = draft['subject']
                 
-                # Threading (Trả lời đúng luồng)
-                # Dùng hàm get của dict để tránh lỗi nếu key không tồn tại
-                # Trong GmailService get_email_detail ta chưa lấy message_id gốc, 
-                # nên tạm thời chỉ set threadId (vẫn gom nhóm được)
+                # ⭐ QUAN TRỌNG: Gắn Thread References để Gmail hiểu đây là Reply
+                msg_id_header = headers.get('Message-ID')
+                if msg_id_header:
+                    message['In-Reply-To'] = msg_id_header
+                    message['References'] = msg_id_header
                 
+                # 4. Encode và tạo Draft
                 raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
                 
                 body = {
-                    'message': {'raw': raw},
-                    'threadId': email.get('id') # threadId thường giống id nếu là mail đầu
+                    'message': {
+                        'raw': raw,
+                        'threadId': original_msg.get('threadId')  # ⭐ Gắn Thread ID
+                    }
                 }
                 
-                # Gọi API Gmail qua object gốc
-                self.gmail.users().drafts().create(userId='me', body=body).execute()
-                logging.info("✅ Tạo Draft thành công!")
+                # 5. Gọi API tạo Draft
+                draft_result = self.gmail.users().drafts().create(
+                    userId='me', 
+                    body=body
+                ).execute()
+                
+                logging.info(f"✅ Đã tạo Draft Reply trong Thread! Draft ID: {draft_result['id']}")
                 
             except Exception as e:
-                logging.error(f"Lỗi tạo draft: {e}")
+                logging.error(f"❌ Lỗi tạo draft reply: {e}")
                 return {**state, "error": str(e)}
-            
+        
         return state
 
 # --- WORKFLOW ---
