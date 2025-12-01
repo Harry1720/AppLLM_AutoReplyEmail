@@ -219,3 +219,16 @@ def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_depe
         return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")
+
+
+# --- API XÓA BẢN NHÁP ---
+@email_router.delete("/drafts/{draft_id}")
+def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    
+    success = service.delete_draft(draft_id)
+    
+    if success:
+        return {"message": "Đã xóa bản nháp thành công"}
+    
+    raise HTTPException(status_code=500, detail="Xóa bản nháp thất bại")

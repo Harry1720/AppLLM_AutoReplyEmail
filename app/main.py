@@ -21,7 +21,7 @@ app.add_middleware(
 )
 
 # Include router
-app.include_router(auth_router, tags=["Authentication"])
+app.include_router(auth_router)
 app.include_router(email_router, tags=["Email Management"])
 app.include_router(user_router, tags=["User Profile"])
 app.include_router(ai_router, tags=["AI Agents"])

@@ -345,9 +345,6 @@ class GmailService:
             return False
             
 
-  # app/infra/services/gmail_service.py
-    from email.utils import parseaddr # Nhớ import
-
     def reply_email(self, original_msg_id, body_content, attachments=None):
         try:
             print(f"🚀 Đang chuẩn bị Reply email: {original_msg_id}")
@@ -480,3 +477,22 @@ class GmailService:
         except Exception as e:
             print(f"❌ Lỗi gửi draft: {e}")
             return None
+        
+
+    # --- HÀM XÓA BẢN NHÁP (Discard Draft) ---
+    def delete_draft(self, draft_id):
+        try:
+            print(f"🗑️ Đang xóa vĩnh viễn bản nháp {draft_id}...")
+            
+            # Lệnh này xóa vĩnh viễn draft (không vào thùng rác)
+            self.service.users().drafts().delete(
+                userId='me', 
+                id=draft_id
+            ).execute()
+            
+            print(f"✅ Đã xóa bản nháp thành công!")
+            return True
+
+        except Exception as e:
+            print(f"❌ Lỗi xóa draft: {e}")
+            return False
