@@ -217,7 +217,12 @@ class EmailReasoningSystem:
                     body=body
                 ).execute()
                 
-                logging.info(f"✅ Đã tạo Draft Reply trong Thread! Draft ID: {draft_result['id']}")
+                draft_id = draft_result['id']
+                logging.info(f"✅ Đã tạo Draft Reply trong Thread! Draft ID: {draft_id}")
+                
+                # ⭐ CẬP NHẬT: Trả về draft_id trong state
+                updated_draft = {**draft, "draft_id": draft_id}
+                return {**state, "draft_reply": updated_draft}
                 
             except Exception as e:
                 logging.error(f"❌ Lỗi tạo draft reply: {e}")

@@ -65,10 +65,12 @@ async def generate_reply(
         if result.get("error"):
              raise HTTPException(status_code=500, detail=result["error"])
 
-        # Trả về kết quả
+        # Trả về kết quả bao gồm cả draft_id
+        draft_data = result.get("draft_reply", {})
         return {
             "message": "Đã tạo bản nháp thành công", 
-            "draft": result.get("draft_reply")
+            "draft": draft_data,
+            "draft_id": draft_data.get("draft_id")  # Thêm draft_id vào response
         }
         
     except Exception as e:

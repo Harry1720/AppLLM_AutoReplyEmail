@@ -158,6 +158,8 @@ class GmailService:
             message['subject'] = subject
 
             # Đính kèm nội dung chữ
+            # Body content từ FE đã có format HTML (bao gồm \n, <br>, <p>...)
+            # Giữ nguyên định dạng bằng cách sử dụng 'html' subtype
             msg_text = MIMEText(body_content, 'html', 'utf-8')
             message.attach(msg_text)
 
@@ -312,6 +314,49 @@ class GmailService:
         except Exception as e:
             print(f"❌ Lỗi lấy drafts: {e}")
             return {"drafts": [], "next_page_token": None}
+
+
+    # --- HÀM LẤY CHI TIẾT MỘT BẢN NHÁP (DRAFT DETAIL) ---
+    def get_draft_detail(self, draft_id):
+        try:
+            print(f"🚀 Đang lấy chi tiết draft ID: {draft_id}")
+            
+            # Gọi API lấy full draft
+            draft = self.service.users().drafts().get(
+                userId='me', 
+                id=draft_id, 
+                format='full'
+            ).execute()
+            
+            # Cấu trúc: draft = {'id': '...', 'message': {...}}
+            msg = draft.get('message', {})
+            payload = msg.get('payload', {})
+            headers_list = payload.get('headers', [])
+            
+            # Chuyển headers thành dict
+            headers = {h['name']: h['value'] for h in headers_list}
+            
+            # Lấy body của draft (dùng hàm đệ quy có sẵn)
+            body_html = self._get_body_from_payload(payload)
+            
+            result = {
+                "id": draft['id'],  # Draft ID
+                "msg_id": msg.get('id'),  # Message ID
+                "subject": headers.get('Subject', '(No Subject)'),
+                "from": headers.get('From', ''),
+                "to": headers.get('To', ''),
+                "date": headers.get('Date', ''),
+                "body": body_html,
+                "snippet": msg.get('snippet'),
+                "thread_id": msg.get('threadId')
+            }
+            
+            print(f"✅ Đã lấy chi tiết draft thành công")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Lỗi lấy chi tiết draft: {e}")
+            return None
         
 
     # --- 1. ĐÁNH DẤU ĐÃ ĐỌC (Mark as Read) ---
@@ -397,6 +442,7 @@ class GmailService:
                     message['In-Reply-To'] = msg_id_header
                     message['References'] = msg_id_header
 
+                # Đính kèm nội dung - giữ nguyên định dạng HTML từ FE
                 message.attach(MIMEText(body_content, 'html', 'utf-8'))
 
                 # (Code xử lý file giữ nguyên...)

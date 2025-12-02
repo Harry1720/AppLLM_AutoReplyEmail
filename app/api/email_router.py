@@ -131,6 +131,22 @@ def list_drafts(
     # Gọi hàm mới viết
     return service.get_drafts(max_results=limit, page_token=page_token)
 
+
+# --- API LẤY CHI TIẾT MỘT DRAFT ---
+@email_router.get("/drafts/{draft_id}")
+def get_draft_detail(
+    draft_id: str,
+    token_data: dict = Depends(get_token_dependency)
+):
+    service = GmailService(token_data)
+    
+    draft_detail = service.get_draft_detail(draft_id)
+    
+    if draft_detail:
+        return {"data": draft_detail}
+    
+    raise HTTPException(status_code=404, detail="Không tìm thấy bản nháp hoặc lỗi khi đọc")
+
 # app/api/email_router.py
 
 # ... (Các API cũ giữ nguyên) ...
