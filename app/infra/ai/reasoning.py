@@ -231,13 +231,15 @@ class EmailReasoningSystem:
                 
                 # 6. LƯU DRAFT VÀO SUPABASE
                 try:
-                    # Lấy thông tin người nhận
+                    # Lấy thông tin người nhận và thread_id
                     recipient_email = email.get("from", "")
+                    thread_id = original_msg.get('threadId', '')
                     
                     # Lưu vào bảng email_drafts với schema đầy đủ
                     supabase_draft = self.draft_repo.create_draft(
                         user_id=self.user_id,      # ⭐ Truyền user_id (NOT NULL constraint)
                         email_id=email['id'],      # ⭐ Truyền email_id gốc (NOT NULL constraint)
+                        thread_id=thread_id,       # ⭐ Truyền thread_id (NOT NULL constraint)
                         draft_id=draft_id,         # Gmail Draft ID
                         subject=draft.get("subject", ""),
                         body=draft.get("body", ""),
