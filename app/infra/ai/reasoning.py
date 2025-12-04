@@ -80,15 +80,28 @@ class EmailReasoningSystem:
         query = f"{email['subject']} {email['body'][:200]}"
         
         try:
-            # Sử dụng match_documents function của Supabase thay vì filter
-            # Vì SupabaseVectorStore có issue với filter params
-            docs = self.vectorstore.similarity_search(query, k=3)
+            # Tạo embedding cho query
+            query_embedding = self.embeddings.embed_query(query)
             
-            # Lọc kết quả theo user_id sau khi query
-            filtered_docs = [d for d in docs if d.metadata.get("user_id") == self.user_id]
+            # Gọi trực tiếp RPC function match_documents với filter_user_id
+            response = self.supabase.rpc(
+                'match_documents',
+                {
+                    'query_embedding': query_embedding,
+                    'match_count': 3,
+                    'filter_user_id': self.user_id
+                }
+            ).execute()
             
-            context = [d.page_content for d in filtered_docs]
-            logging.info(f"✅ Tìm thấy {len(context)} email tham khảo")
+            # Parse kết quả
+            context = []
+            if response.data:
+                for doc in response.data:
+                    context.append(doc.get('content', ''))
+                logging.info(f"✅ Tìm thấy {len(context)} email tham khảo từ user {self.user_id}")
+            else:
+                logging.info("ℹ️ Không tìm thấy email tham khảo nào")
+            
             return {**state, "context_emails": context}
         except Exception as e:
             logging.warning(f"⚠️ Lỗi RAG: {e}. Tiếp tục không có context.")
