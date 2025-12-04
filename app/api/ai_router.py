@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from app.api.deps import get_token_dependency
 from app.api.user_router import get_current_user_id
+from app.infra.supabase_client import get_supabase
+import logging
 
 ai_router = APIRouter()
 
@@ -76,3 +78,33 @@ async def generate_reply(
     except Exception as e:
         print(f"❌ Lỗi AI Router: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- API 3: KIỂM TRA TRẠNG THÁI SYNC ---
+@ai_router.get("/ai/sync-status")
+async def check_sync_status(user_id: str = Depends(get_current_user_id)):
+    """
+    Kiểm tra xem user đã có email được vector hóa chưa
+    Trả về số lượng document và trạng thái sync
+    """
+    try:
+        db = get_supabase()
+        
+        # Đếm số lượng document của user trong bảng documents
+        response = db.table("documents").select("id", count="exact").eq("metadata->>user_id", user_id).execute()
+        
+        doc_count = response.count if hasattr(response, 'count') else 0
+        
+        return {
+            "synced": doc_count > 0,
+            "document_count": doc_count,
+            "message": "Đã có ngữ cảnh" if doc_count > 0 else "Chưa có ngữ cảnh"
+        }
+        
+    except Exception as e:
+        logging.error(f"❌ Lỗi check sync status: {e}")
+        return {
+            "synced": False,
+            "document_count": 0,
+            "message": "Lỗi kiểm tra trạng thái"
+        }

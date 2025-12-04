@@ -80,13 +80,18 @@ class EmailReasoningSystem:
         query = f"{email['subject']} {email['body'][:200]}"
         
         try:
-            docs = self.vectorstore.similarity_search(
-                query, k=3, filter={"user_id": self.user_id}
-            )
-            context = [d.page_content for d in docs]
+            # Sử dụng match_documents function của Supabase thay vì filter
+            # Vì SupabaseVectorStore có issue với filter params
+            docs = self.vectorstore.similarity_search(query, k=3)
+            
+            # Lọc kết quả theo user_id sau khi query
+            filtered_docs = [d for d in docs if d.metadata.get("user_id") == self.user_id]
+            
+            context = [d.page_content for d in filtered_docs]
+            logging.info(f"✅ Tìm thấy {len(context)} email tham khảo")
             return {**state, "context_emails": context}
         except Exception as e:
-            logging.warning(f"Lỗi RAG: {e}")
+            logging.warning(f"⚠️ Lỗi RAG: {e}. Tiếp tục không có context.")
             return {**state, "context_emails": []}
 
    # --- NODE 3: VIẾT TRẢ LỜI (OLLAMA) - ĐÃ NÂNG CẤP ---
@@ -226,21 +231,15 @@ class EmailReasoningSystem:
                 
                 # 6. LƯU DRAFT VÀO SUPABASE
                 try:
-                    draft_metadata = {
-                        "gmail_draft_id": draft_id,
-                        "thread_id": original_msg.get('threadId'),
-                        "subject": draft.get("subject", ""),
-                        "to": email.get("from", ""),
-                        "original_email_id": email.get("id", "")
-                    }
+                    # Lấy thông tin người nhận
+                    recipient_email = email.get("from", "")
                     
-                    # Lưu vào bảng email_drafts
+                    # Lưu vào bảng email_drafts với schema mới
                     supabase_draft = self.draft_repo.create_draft(
-                        user_id=self.user_id,
-                        email_id=state.get("target_email_id"),
-                        content=draft.get("body", ""),
-                        metadata=draft_metadata,
-                        embedding=None  # Có thể thêm embedding sau nếu cần
+                        draft_id=draft_id,  # Gmail Draft ID
+                        subject=draft.get("subject", ""),
+                        body=draft.get("body", ""),
+                        recipient=recipient_email
                     )
                     
                     if supabase_draft:

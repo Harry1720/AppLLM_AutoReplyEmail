@@ -4,38 +4,39 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 class DraftRepository:
-    """Repository để quản lý bảng email_drafts trong Supabase"""
+    """Repository để quản lý bảng email_drafts trong Supabase
+    
+    Schema: id, draft_id, subject, body, recipient, created_at
+    """
     
     def __init__(self):
         self.db = get_supabase()
     
-    def create_draft(self, user_id: str, email_id: str, content: str, metadata: dict = None, embedding: list = None):
+    def create_draft(self, draft_id: str, subject: str, body: str, recipient: str):
         """
         Tạo mới một draft trong Supabase
         
         Args:
-            user_id: ID của user
-            email_id: ID của email gốc (email cần reply)
-            content: Nội dung draft (HTML/text)
-            metadata: Dict chứa thông tin bổ sung (subject, to, from, draft_id từ Gmail, etc.)
-            embedding: Vector embedding của nội dung (optional)
+            draft_id: Gmail Draft ID (unique identifier)
+            subject: Tiêu đề email
+            body: Nội dung draft (HTML/text)
+            recipient: Email người nhận
         
         Returns:
             Dict: Thông tin draft đã tạo hoặc None nếu lỗi
         """
         try:
             draft_data = {
-                "user_id": user_id,
-                "email_id": email_id,
-                "content": content,
-                "metadata": metadata or {},
-                "embedding": embedding
+                "draft_id": draft_id,
+                "subject": subject,
+                "body": body,
+                "recipient": recipient
             }
             
             res = self.db.table("email_drafts").insert(draft_data).execute()
             
             if res.data and len(res.data) > 0:
-                logging.info(f"✅ Draft đã được lưu vào Supabase. Draft ID: {res.data[0].get('id')}")
+                logging.info(f"✅ Draft đã được lưu vào Supabase. Supabase ID: {res.data[0].get('id')}, Gmail Draft ID: {draft_id}")
                 return res.data[0]
             return None
             
@@ -48,46 +49,20 @@ class DraftRepository:
         Lấy draft từ Supabase dựa trên Gmail Draft ID
         
         Args:
-            gmail_draft_id: ID của draft trên Gmail (lưu trong metadata)
+            gmail_draft_id: ID của draft trên Gmail
         
         Returns:
             Dict hoặc None
         """
         try:
-            # Tìm draft có metadata chứa gmail_draft_id
-            res = self.db.table("email_drafts").select("*").execute()
-            
-            if res.data:
-                for draft in res.data:
-                    metadata = draft.get("metadata", {})
-                    if metadata.get("gmail_draft_id") == gmail_draft_id:
-                        return draft
-            return None
-            
-        except Exception as e:
-            logging.error(f"❌ Lỗi tìm draft: {e}")
-            return None
-    
-    def get_draft_by_email_id(self, email_id: str, user_id: str):
-        """
-        Lấy draft theo email_id và user_id
-        
-        Args:
-            email_id: ID của email gốc
-            user_id: ID của user
-        
-        Returns:
-            Dict hoặc None
-        """
-        try:
-            res = self.db.table("email_drafts").select("*").eq("email_id", email_id).eq("user_id", user_id).execute()
+            res = self.db.table("email_drafts").select("*").eq("draft_id", gmail_draft_id).execute()
             
             if res.data and len(res.data) > 0:
                 return res.data[0]
             return None
             
         except Exception as e:
-            logging.error(f"❌ Lỗi lấy draft: {e}")
+            logging.error(f"❌ Lỗi tìm draft: {e}")
             return None
     
     def delete_draft_by_gmail_id(self, gmail_draft_id: str):
@@ -101,37 +76,31 @@ class DraftRepository:
             Bool: True nếu thành công, False nếu thất bại
         """
         try:
-            # Tìm và xóa draft
-            res = self.db.table("email_drafts").select("*").execute()
+            delete_res = self.db.table("email_drafts").delete().eq("draft_id", gmail_draft_id).execute()
             
-            if res.data:
-                for draft in res.data:
-                    metadata = draft.get("metadata", {})
-                    if metadata.get("gmail_draft_id") == gmail_draft_id:
-                        delete_res = self.db.table("email_drafts").delete().eq("id", draft["id"]).execute()
-                        logging.info(f"✅ Đã xóa draft khỏi Supabase. Gmail Draft ID: {gmail_draft_id}")
-                        return True
-            
-            logging.warning(f"⚠️ Không tìm thấy draft với Gmail Draft ID: {gmail_draft_id}")
-            return False
+            if delete_res.data and len(delete_res.data) > 0:
+                logging.info(f"✅ Đã xóa draft khỏi Supabase. Gmail Draft ID: {gmail_draft_id}")
+                return True
+            else:
+                logging.warning(f"⚠️ Không tìm thấy draft với Gmail Draft ID: {gmail_draft_id}")
+                return False
             
         except Exception as e:
             logging.error(f"❌ Lỗi xóa draft: {e}")
             return False
     
-    def check_draft_exists(self, email_id: str, user_id: str):
+    def check_draft_exists(self, gmail_draft_id: str):
         """
-        Kiểm tra xem email đã có draft chưa
+        Kiểm tra xem draft đã tồn tại chưa
         
         Args:
-            email_id: ID của email gốc
-            user_id: ID của user
+            gmail_draft_id: Gmail Draft ID
         
         Returns:
             Bool: True nếu đã tồn tại, False nếu chưa
         """
         try:
-            res = self.db.table("email_drafts").select("id").eq("email_id", email_id).eq("user_id", user_id).execute()
+            res = self.db.table("email_drafts").select("id").eq("draft_id", gmail_draft_id).execute()
             return res.data and len(res.data) > 0
             
         except Exception as e:
