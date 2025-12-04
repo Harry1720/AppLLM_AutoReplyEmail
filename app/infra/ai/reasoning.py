@@ -11,6 +11,7 @@ import logging
 import base64
 from email.mime.text import MIMEText
 from app.infra.services.gmail_service import GmailService
+from app.domain.repositories.draft_repository import DraftRepository
 
 logging.basicConfig(level=logging.INFO)
 
@@ -30,6 +31,9 @@ class EmailReasoningSystem:
         # Kết nối Gmail (Wrapper)
         self.gmail_wrapper = GmailService(token_data)
         self.gmail = self.gmail_wrapper.service # Object gốc để gọi API chuyên sâu
+        
+        # Kết nối Supabase Draft Repository
+        self.draft_repo = DraftRepository()
         
         # Setup AI - OLLAMA (Local)
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
@@ -219,6 +223,33 @@ class EmailReasoningSystem:
                 
                 draft_id = draft_result['id']
                 logging.info(f"✅ Đã tạo Draft Reply trong Thread! Draft ID: {draft_id}")
+                
+                # 6. LƯU DRAFT VÀO SUPABASE
+                try:
+                    draft_metadata = {
+                        "gmail_draft_id": draft_id,
+                        "thread_id": original_msg.get('threadId'),
+                        "subject": draft.get("subject", ""),
+                        "to": email.get("from", ""),
+                        "original_email_id": email.get("id", "")
+                    }
+                    
+                    # Lưu vào bảng email_drafts
+                    supabase_draft = self.draft_repo.create_draft(
+                        user_id=self.user_id,
+                        email_id=state.get("target_email_id"),
+                        content=draft.get("body", ""),
+                        metadata=draft_metadata,
+                        embedding=None  # Có thể thêm embedding sau nếu cần
+                    )
+                    
+                    if supabase_draft:
+                        logging.info(f"✅ Draft đã được lưu vào Supabase với ID: {supabase_draft.get('id')}")
+                    else:
+                        logging.warning("⚠️ Không thể lưu draft vào Supabase (không chặn workflow)")
+                        
+                except Exception as e:
+                    logging.error(f"❌ Lỗi lưu draft vào Supabase: {e} (tiếp tục workflow)")
                 
                 # ⭐ CẬP NHẬT: Trả về draft_id trong state
                 updated_draft = {**draft, "draft_id": draft_id}

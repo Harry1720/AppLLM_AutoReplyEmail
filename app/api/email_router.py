@@ -3,6 +3,7 @@ from app.infra.services.gmail_service import GmailService
 from typing import Optional, List
 from app.api.deps import get_token_dependency
 from app.core.enums import EmailFolder, EmailStatus
+from app.domain.repositories.draft_repository import DraftRepository
 email_router = APIRouter()
 from typing import Optional
 
@@ -241,10 +242,27 @@ def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_depe
 @email_router.delete("/drafts/{draft_id}")
 def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
+    draft_repo = DraftRepository()
     
-    success = service.delete_draft(draft_id)
+    # 1. Xóa draft trên Gmail
+    gmail_success = service.delete_draft(draft_id)
     
-    if success:
-        return {"message": "Đã xóa bản nháp thành công"}
+    if not gmail_success:
+        raise HTTPException(status_code=500, detail="Xóa bản nháp trên Gmail thất bại")
     
-    raise HTTPException(status_code=500, detail="Xóa bản nháp thất bại")
+    # 2. Xóa draft trong Supabase (dựa trên gmail_draft_id)
+    supabase_success = draft_repo.delete_draft_by_gmail_id(draft_id)
+    
+    if supabase_success:
+        return {
+            "message": "Đã xóa bản nháp thành công (cả Gmail và Supabase)",
+            "gmail_deleted": True,
+            "supabase_deleted": True
+        }
+    else:
+        # Gmail đã xóa nhưng không tìm thấy trong Supabase (có thể chưa được lưu)
+        return {
+            "message": "Đã xóa bản nháp trên Gmail (không tìm thấy trong Supabase)",
+            "gmail_deleted": True,
+            "supabase_deleted": False
+        }

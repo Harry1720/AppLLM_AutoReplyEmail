@@ -42,18 +42,32 @@ class EmailVectorizer:
             
             if not sent_emails:
                 logging.info("⚠️ Không tìm thấy email đã gửi nào.")
-                return 
+                return {"synced_count": 0, "skipped_count": 0, "message": "Không có email"}
 
-            # 2. Xử lý và lưu vào Vector Store
-            count = 0
+            # 2. Kiểm tra email nào đã được vector hóa
+            existing_email_ids = self._get_existing_email_ids()
+            logging.info(f"📊 Đã có {len(existing_email_ids)} email trong database")
+
+            # 3. Xử lý và lưu vào Vector Store (chỉ email mới)
+            synced_count = 0
+            skipped_count = 0
+            
             for email in sent_emails:
                 try:
+                    email_id = email['id']
+                    
+                    # Kiểm tra xem email đã tồn tại chưa
+                    if email_id in existing_email_ids:
+                        skipped_count += 1
+                        logging.info(f"⏭️ Bỏ qua email đã có: {email.get('subject', 'No Subject')[:30]}...")
+                        continue
+                    
                     # Lấy nội dung chi tiết (HTML Body)
-                    detail = self.gmail.get_email_detail(email['id'])
-                    if not detail: continue
+                    detail = self.gmail.get_email_detail(email_id)
+                    if not detail: 
+                        continue
 
                     # Chỉ lấy text đơn giản để vector hóa (bỏ qua HTML rườm rà)
-                    # (Ở đây ta ghép Subject và Body lại)
                     full_content = f"Subject: {detail['subject']}\nContent: {detail['snippet']}\n{detail['body'][:2000]}"
                     
                     # Chia nhỏ văn bản
@@ -68,16 +82,45 @@ class EmailVectorizer:
                     } for _ in chunks]
 
                     # Lưu vào Supabase
-                    self.vectorstore.add_texts(texts=chunks, metadatas=metadatas)
-                    count += 1
-                    print(f"✅ Đã học xong email: {detail['subject'][:30]}...")
+                    ids = self.vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+                    synced_count += 1
+                    logging.info(f"✅ Đã học xong email: {detail['subject'][:30]}... (ID: {email_id})")
                     
                 except Exception as e:
-                    logging.error(f"Lỗi xử lý email {email['id']}: {e}")
+                    logging.error(f"❌ Lỗi xử lý email {email.get('id', 'unknown')}: {e}")
 
-            logging.info(f"🎉 Hoàn tất! Đã học được văn phong từ {count} email.")
-            return f"Đã đồng bộ {count} email."
+            logging.info(f"🎉 Hoàn tất! Đã học {synced_count} email mới, bỏ qua {skipped_count} email đã có.")
+            return {
+                "synced_count": synced_count,
+                "skipped_count": skipped_count,
+                "message": f"Đã đồng bộ {synced_count} email mới"
+            }
 
         except Exception as e:
-            logging.error(f"Lỗi sync: {e}")
-            return str(e)
+            logging.error(f"❌ Lỗi sync: {e}")
+            return {"synced_count": 0, "skipped_count": 0, "error": str(e)}
+    
+    def _get_existing_email_ids(self):
+        """
+        Lấy danh sách email_id đã được vector hóa trong Supabase cho user hiện tại
+        
+        Returns:
+            set: Tập hợp các email_id đã tồn tại
+        """
+        try:
+            # Query trực tiếp từ Supabase để lấy danh sách email_id
+            response = self.supabase.table("documents").select("metadata").eq("metadata->>user_id", self.user_id).execute()
+            
+            existing_ids = set()
+            if response.data:
+                for doc in response.data:
+                    metadata = doc.get("metadata", {})
+                    email_id = metadata.get("email_id")
+                    if email_id:
+                        existing_ids.add(email_id)
+            
+            return existing_ids
+            
+        except Exception as e:
+            logging.error(f"❌ Lỗi lấy danh sách email đã có: {e}")
+            return set()  # Trả về set rỗng nếu lỗi (sẽ sync tất cả)
