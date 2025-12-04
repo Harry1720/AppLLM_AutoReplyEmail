@@ -12,12 +12,13 @@ class DraftRepository:
     def __init__(self):
         self.db = get_supabase()
     
-    def create_draft(self, user_id: str, draft_id: str, subject: str, body: str, recipient: str):
+    def create_draft(self, user_id: str, email_id: str, draft_id: str, subject: str, body: str, recipient: str):
         """
         Tạo mới một draft trong Supabase
         
         Args:
             user_id: ID của user (required - NOT NULL constraint)
+            email_id: Gmail Message ID của email gốc đang reply (required - NOT NULL constraint)
             draft_id: Gmail Draft ID (unique identifier)
             subject: Tiêu đề email
             body: Nội dung draft (HTML/text)
@@ -29,6 +30,7 @@ class DraftRepository:
         try:
             draft_data = {
                 "user_id": user_id,
+                "email_id": email_id,
                 "draft_id": draft_id,
                 "subject": subject,
                 "body": body,
