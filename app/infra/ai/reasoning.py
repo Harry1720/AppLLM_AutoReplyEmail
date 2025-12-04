@@ -234,9 +234,10 @@ class EmailReasoningSystem:
                     # Lấy thông tin người nhận
                     recipient_email = email.get("from", "")
                     
-                    # Lưu vào bảng email_drafts với schema mới
+                    # Lưu vào bảng email_drafts với schema đầy đủ
                     supabase_draft = self.draft_repo.create_draft(
-                        draft_id=draft_id,  # Gmail Draft ID
+                        user_id=self.user_id,  # ⭐ Truyền user_id (NOT NULL constraint)
+                        draft_id=draft_id,     # Gmail Draft ID
                         subject=draft.get("subject", ""),
                         body=draft.get("body", ""),
                         recipient=recipient_email
