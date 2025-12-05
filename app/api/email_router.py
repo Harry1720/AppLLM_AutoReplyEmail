@@ -123,15 +123,21 @@ def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
 # --- API LẤY DANH SÁCH DRAFTS ---
 @email_router.get("/drafts")
 def list_drafts(
-    limit: int = Query(10, description="Số lượng draft muốn lấy"),
-    page_token: Optional[str] = Query(None),
     token_data: dict = Depends(get_token_dependency)
 ):
-    service = GmailService(token_data)
+    """Lấy tất cả drafts của user từ Supabase"""
+    draft_repo = DraftRepository()
     
-    # Gọi hàm mới viết
-    return service.get_drafts(max_results=limit, page_token=page_token)
-
+    # Lấy user_id từ token (email)
+    user_id = token_data.get("email")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Không tìm thấy thông tin user")
+    
+    # Lấy tất cả drafts từ Supabase
+    drafts = draft_repo.get_all_drafts_by_user(user_id)
+    
+    return {"drafts": drafts}
 
 # --- API LẤY CHI TIẾT MỘT DRAFT ---
 @email_router.get("/drafts/{draft_id}")
@@ -170,7 +176,6 @@ def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_depen
         return {"message": "Đã đánh dấu chưa đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-
 # --- API TRẢ LỜI EMAIL ---
 @email_router.post("/emails/{msg_id}/reply")
 async def reply_user_email(
@@ -204,7 +209,6 @@ async def reply_user_email(
     
     raise HTTPException(status_code=500, detail="Trả lời thất bại")
 
-
 # --- API CẬP NHẬT BẢN NHÁP ---
 @email_router.put("/drafts/{draft_id}")
 def update_existing_draft(
@@ -224,7 +228,6 @@ def update_existing_draft(
     
     raise HTTPException(status_code=500, detail="Cập nhật thất bại")
 
-
 # --- API GỬI BẢN NHÁP ĐI ---
 @email_router.post("/drafts/{draft_id}/send")
 def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
@@ -236,7 +239,6 @@ def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_depe
         return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")
-
 
 # --- API XÓA BẢN NHÁP ---
 @email_router.delete("/drafts/{draft_id}")

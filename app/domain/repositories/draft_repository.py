@@ -112,3 +112,25 @@ class DraftRepository:
         except Exception as e:
             logging.error(f"❌ Lỗi kiểm tra draft: {e}")
             return False
+    
+    def get_all_drafts_by_user(self, user_id: str):
+        """
+        Lấy tất cả drafts của một user từ Supabase
+        
+        Args:
+            user_id: ID của user
+        
+        Returns:
+            List[Dict]: Danh sách các drafts hoặc []
+        """
+        try:
+            res = self.db.table("email_drafts").select("*").eq("user_id", user_id).execute()
+            
+            if res.data:
+                logging.info(f"✅ Tìm thấy {len(res.data)} drafts cho user {user_id}")
+                return res.data
+            return []
+            
+        except Exception as e:
+            logging.error(f"❌ Lỗi lấy drafts: {e}")
+            return []
