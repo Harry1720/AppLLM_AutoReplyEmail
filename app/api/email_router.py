@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile, 
 from app.infra.services.gmail_service import GmailService 
 from typing import Optional, List
 from app.api.deps import get_token_dependency
+from app.api.user_router import get_current_user_id
 from app.core.enums import EmailFolder, EmailStatus
 from app.domain.repositories.draft_repository import DraftRepository
 email_router = APIRouter()
@@ -123,16 +124,10 @@ def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
 # --- API LẤY DANH SÁCH DRAFTS ---
 @email_router.get("/drafts")
 def list_drafts(
-    token_data: dict = Depends(get_token_dependency)
+    user_id: str = Depends(get_current_user_id)
 ):
     """Lấy tất cả drafts của user từ Supabase"""
     draft_repo = DraftRepository()
-    
-    # Lấy user_id từ token (email)
-    user_id = token_data.get("email")
-    
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Không tìm thấy thông tin user")
     
     # Lấy tất cả drafts từ Supabase
     drafts = draft_repo.get_all_drafts_by_user(user_id)
