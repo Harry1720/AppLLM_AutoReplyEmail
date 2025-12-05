@@ -140,8 +140,24 @@ def get_draft_detail(
     draft_id: str,
     token_data: dict = Depends(get_token_dependency)
 ):
-    service = GmailService(token_data)
+    """Lấy chi tiết draft từ Supabase hoặc Gmail"""
+    # Thử lấy từ Supabase trước
+    draft_repo = DraftRepository()
+    supabase_draft = draft_repo.get_draft_by_gmail_id(draft_id)
     
+    if supabase_draft:
+        # Trả về draft từ Supabase với format giống Gmail
+        return {
+            "data": {
+                "id": supabase_draft.get("draft_id"),
+                "subject": supabase_draft.get("subject"),
+                "to": supabase_draft.get("recipient"),
+                "body": supabase_draft.get("body"),
+            }
+        }
+    
+    # Nếu không có trong Supabase, thử lấy từ Gmail
+    service = GmailService(token_data)
     draft_detail = service.get_draft_detail(draft_id)
     
     if draft_detail:
