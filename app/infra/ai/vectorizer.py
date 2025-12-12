@@ -1,5 +1,6 @@
 import os
 import logging
+import uuid
 from datetime import datetime, timezone
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -81,8 +82,30 @@ class EmailVectorizer:
                         "date": detail['date']
                     } for _ in chunks]
 
-                    # Lưu vào Supabase
-                    ids = self.vectorstore.add_texts(texts=chunks, metadatas=metadatas)
+                    # Debug log để kiểm tra user_id
+                    logging.info(f"🔍 Đang lưu email với user_id: {self.user_id}")
+                    
+                    # Lưu trực tiếp vào Supabase thay vì dùng vectorstore
+                    # để kiểm soát chính xác user_id được insert
+                    for i, chunk in enumerate(chunks):
+                        # Tạo embedding cho chunk
+                        embedding = self.embeddings.embed_query(chunk)
+                        
+                        # Insert trực tiếp vào table với user_id chính xác
+                        doc_data = {
+                            "id": str(uuid.uuid4()),  # Generate UUID for id column
+                            "content": chunk,
+                            "metadata": metadatas[i],
+                            "embedding": embedding,
+                            "user_id": self.user_id  # Đảm bảo user_id ở cấp độ cột
+                        }
+                        
+                        try:
+                            self.supabase.table("documents").insert(doc_data).execute()
+                        except Exception as insert_error:
+                            logging.error(f"❌ Lỗi insert chunk {i}: {insert_error}")
+                            raise
+                    
                     synced_count += 1
                     logging.info(f"✅ Đã học xong email: {detail['subject'][:30]}... (ID: {email_id})")
                     
