@@ -60,19 +60,19 @@ export default function AuthCallbackPage() {
             
             const status = await checkSyncStatus();
             if (status.synced) {
-              setSyncMessage(`✅ Đã lấy ngữ cảnh từ ${status.document_count} email`);
+              setSyncMessage(`✅ Đã lấy ngữ cảnh`);
               break;
             }
             
             attempts++;
-            setSyncMessage(`Đang xử lý lấy ngữ cảnh... (${attempts}/${maxAttempts})`);
+            setSyncMessage(`Đang xử lý lấy ngữ cảnh...`);
           }
           
           if (attempts >= maxAttempts) {
             setSyncMessage('⚠️ Quá thời gian chờ. Ngữ cảnh sẽ được xử lý trong nền.');
           }
         } else {
-          setSyncMessage(`✅ Đã có sẵn ngữ cảnh từ ${syncStatus.document_count} email`);
+          setSyncMessage(`✅ Đã có sẵn ngữ cảnh`);
         }
         
         // Wait a moment before redirect
@@ -112,7 +112,7 @@ export default function AuthCallbackPage() {
                   <div className="bg-blue-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  Hệ thống đang phân tích email đã gửi để cải thiện chất lượng gợi ý AI
+                  Hệ thống đang phân tích email đã gửi để cải thiện chất lượng gợi ý AI. Vui lòng đợi một lát.
                 </p>
               </div>
             )}
