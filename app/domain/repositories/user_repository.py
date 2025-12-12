@@ -90,7 +90,21 @@ class UserRepository:
     # --- 6. XÓA USER ---
     def delete_user(self, user_id: str):
         try:
+            # Xóa theo thứ tự: documents -> email_drafts -> users
+            # để tránh lỗi foreign key constraint
+            
+            # 1. Xóa tất cả documents của user
+            self.db.table("documents").delete().eq("user_id", user_id).execute()
+            print(f"✅ Đã xóa documents của user {user_id}")
+            
+            # 2. Xóa tất cả email_drafts của user
+            self.db.table("email_drafts").delete().eq("user_id", user_id).execute()
+            print(f"✅ Đã xóa email_drafts của user {user_id}")
+            
+            # 3. Cuối cùng mới xóa user
             self.db.table("users").delete().eq("id", user_id).execute()
+            print(f"✅ Đã xóa user {user_id}")
+            
             return True
         except Exception as e:
             print(f"❌ Lỗi delete_user: {e}")
