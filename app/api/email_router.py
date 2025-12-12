@@ -243,10 +243,14 @@ def update_existing_draft(
 @email_router.post("/drafts/{draft_id}/send")
 def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
+    draft_repo = DraftRepository()
     
     result = service.send_draft(draft_id)
     
     if result:
+        # Update status trong Supabase thành 'sent'
+        draft_repo.update_status(draft_id, "sent")
+        
         return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")
@@ -279,3 +283,18 @@ def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_depend
             "gmail_deleted": True,
             "supabase_deleted": False
         }
+
+# --- API LẤY DANH SÁCH EMAIL ĐÃ GỬI (SENT) ---
+@email_router.get("/drafts/sent-emails")
+def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
+    """
+    Lấy danh sách email_id đã được gửi (status='sent')
+    Frontend dùng để đánh dấu email đã gửi trả lời
+    """
+    draft_repo = DraftRepository()
+    sent_ids = draft_repo.get_sent_email_ids(user_id)
+    
+    return {
+        "sent_email_ids": sent_ids,
+        "count": len(sent_ids)
+    }

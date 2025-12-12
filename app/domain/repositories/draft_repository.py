@@ -36,7 +36,8 @@ class DraftRepository:
                 "draft_id": draft_id,
                 "subject": subject,
                 "body": body,
-                "recipient": recipient
+                "recipient": recipient,
+                "status": "draft"  # Trạng thái mặc định
             }
             
             res = self.db.table("email_drafts").insert(draft_data).execute()
@@ -113,24 +114,80 @@ class DraftRepository:
             logging.error(f"❌ Lỗi kiểm tra draft: {e}")
             return False
     
-    def get_all_drafts_by_user(self, user_id: str):
+    def get_all_drafts_by_user(self, user_id: str, status: str = None):
         """
         Lấy tất cả drafts của một user từ Supabase
         
         Args:
             user_id: ID của user
+            status: Lọc theo status ('draft', 'sent', 'deleted') - None để lấy tất cả
         
         Returns:
             List[Dict]: Danh sách các drafts hoặc []
         """
         try:
-            res = self.db.table("email_drafts").select("*").eq("user_id", user_id).execute()
+            query = self.db.table("email_drafts").select("*").eq("user_id", user_id)
+            
+            if status:
+                query = query.eq("status", status)
+            
+            res = query.execute()
             
             if res.data:
-                logging.info(f"✅ Tìm thấy {len(res.data)} drafts cho user {user_id}")
+                logging.info(f"✅ Tìm thấy {len(res.data)} drafts cho user {user_id} (status={status or 'all'})")
                 return res.data
             return []
             
         except Exception as e:
             logging.error(f"❌ Lỗi lấy drafts: {e}")
+            return []
+    
+    def update_status(self, gmail_draft_id: str, new_status: str):
+        """
+        Cập nhật status của draft
+        
+        Args:
+            gmail_draft_id: Gmail Draft ID
+            new_status: Status mới ('draft', 'sent', 'deleted')
+        
+        Returns:
+            Bool: True nếu thành công, False nếu thất bại
+        """
+        try:
+            update_res = self.db.table("email_drafts").update({
+                "status": new_status
+            }).eq("draft_id", gmail_draft_id).execute()
+            
+            if update_res.data and len(update_res.data) > 0:
+                logging.info(f"✅ Đã update status draft {gmail_draft_id} -> {new_status}")
+                return True
+            else:
+                logging.warning(f"⚠️ Không tìm thấy draft với Gmail Draft ID: {gmail_draft_id}")
+                return False
+            
+        except Exception as e:
+            logging.error(f"❌ Lỗi update status draft: {e}")
+            return False
+    
+    def get_sent_email_ids(self, user_id: str):
+        """
+        Lấy danh sách email_id đã được gửi (status='sent')
+        
+        Args:
+            user_id: ID của user
+        
+        Returns:
+            List[str]: Danh sách email_id đã gửi
+        """
+        try:
+            res = self.db.table("email_drafts").select("email_id").eq("user_id", user_id).eq("status", "sent").execute()
+            
+            if res.data:
+                email_ids = [draft["email_id"] for draft in res.data]
+                logging.info(f"✅ User {user_id} đã gửi {len(email_ids)} email")
+                return email_ids
+            return []
+            
+        except Exception as e:
+            logging.error(f"❌ Lỗi lấy sent email IDs: {e}")
             return []
