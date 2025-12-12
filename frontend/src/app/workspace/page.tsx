@@ -7,7 +7,7 @@ import EmailList from '@/components/EmailList';
 import EmailContent from '@/components/EmailContent';
 import AiSuggestionPanel from '@/components/AiSuggestionPanel';
 import Header from '@/components/Header';
-import { fetchEmails, fetchEmailDetail, getAuthToken, getUserInfo, generateAiReply, sendEmail, getAllDrafts } from '@/services/api';
+import { fetchEmails, fetchEmailDetail, getAuthToken, getUserInfo, generateAiReply, sendEmail, getAllDrafts, getSentEmails } from '@/services/api';
 
 export default function WorkspacePage() {
   const router = useRouter();
@@ -29,12 +29,6 @@ export default function WorkspacePage() {
     const token = getAuthToken();
     if (!token) {
       router.push('/');
-    } else {
-      // Load sent emails from localStorage
-      const savedSentEmails = localStorage.getItem('sentEmails');
-      if (savedSentEmails) {
-        setSentEmails(new Set(JSON.parse(savedSentEmails)));
-      }
     }
   }, [router]);
 
@@ -107,6 +101,13 @@ export default function WorkspacePage() {
         const drafts = draftsResponse.drafts || [];
         console.log('📧 Number of drafts found:', drafts.length);
         
+        // Fetch sent email IDs from server
+        console.log('📧 Fetching sent emails from server...');
+        const sentResponse = await getSentEmails();
+        const sentEmailIds = new Set(sentResponse.sent_email_ids || []);
+        console.log('📧 Number of sent emails:', sentEmailIds.size);
+        setSentEmails(sentEmailIds);
+        
         // Create map of email_id -> draft_id
         const draftMap = new Map();
         drafts.forEach((draft: { email_id: string; draft_id: string }) => {
@@ -118,7 +119,7 @@ export default function WorkspacePage() {
         emailsWithDrafts = transformedEmails.map(email => {
           const hasDraft = draftMap.has(email.id);
           const draftId = draftMap.get(email.id);
-          const isSent = sentEmails.has(email.id);
+          const isSent = sentEmailIds.has(email.id);
           console.log(`📧 Email ${email.id}: hasDraft=${hasDraft}, draftId=${draftId}, isSent=${isSent}`);
           return {
             ...email,
@@ -260,7 +261,7 @@ export default function WorkspacePage() {
       // Send email using API (already sent by AiSuggestionPanel, this is just callback)
       // await sendEmail(selectedEmail.senderEmail, replySubject, content);
       
-      // Mark email as reply sent
+      // Mark email as sent (status will be saved to DB by backend)
       setEmails((prev) => prev.map((e) => 
         e.id === selectedEmail.id 
           ? { ...e, replySent: true } 
@@ -273,11 +274,12 @@ export default function WorkspacePage() {
         replySent: true 
       });
       
-      // Save to localStorage
+      // Update local sentEmails state
       const newSentEmails = new Set(sentEmails);
       newSentEmails.add(selectedEmail.id);
       setSentEmails(newSentEmails);
-      localStorage.setItem('sentEmails', JSON.stringify(Array.from(newSentEmails)));
+      
+      // Note: Không cần localStorage nữa, status đã được lưu vào DB (email_drafts.status='sent')
       
       // alert('Email đã được gửi thành công!'); // Already shown in AiSuggestionPanel
     } catch (err) {

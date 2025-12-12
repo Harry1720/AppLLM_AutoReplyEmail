@@ -580,3 +580,32 @@ export const getAllDrafts = async () => {
     throw error;
   }
 };
+
+// Get list of sent email IDs from server
+export const getSentEmails = async () => {
+  const token = getAuthToken();
+  
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/drafts/sent-emails`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch sent emails');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching sent emails:', error);
+    throw error;
+  }
+};
