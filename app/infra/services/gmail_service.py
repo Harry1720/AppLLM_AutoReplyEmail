@@ -24,9 +24,12 @@ class GmailService:
                 userId='me', id=msg_id, format='full'
             ).execute()
 
-            # Lấy Headers
+            # Lấy Headers - case-insensitive
             headers_list = msg['payload']['headers']
-            headers = {h['name']: h['value'] for h in headers_list}
+            headers_lower = {h['name'].lower(): h['value'] for h in headers_list}
+            
+            def get_header(name):
+                return headers_lower.get(name.lower(), '')
 
             # Lấy Body (Nội dung thư)
             # Gmail chia body thành nhiều phần (parts), cần hàm đệ quy để tìm
@@ -34,10 +37,10 @@ class GmailService:
             
             return {
                 "id": msg['id'],
-                "subject": headers.get('Subject', '(No Subject)'),
-                "from": headers.get('From', ''),
-                "to": headers.get('To', ''),
-                "date": headers.get('Date', ''),
+                "subject": get_header('Subject') or '(No Subject)',
+                "from": get_header('From'),
+                "to": get_header('To'),
+                "date": get_header('Date'),
                 "body": body_html, # Nội dung HTML để hiển thị lên web
                 "snippet": msg.get('snippet')
             }
@@ -128,14 +131,19 @@ class GmailService:
                         ).execute()
                         
                         headers_list = msg_detail['payload']['headers']
-                        headers = {h['name']: h['value'] for h in headers_list}
+                        headers_lower = {h['name'].lower(): h['value'] for h in headers_list}
+                        
+                        def get_header(name):
+                            return headers_lower.get(name.lower(), '')
                         
                         email_list.append({
                             "id": msg['id'],
                             "snippet": msg_detail.get('snippet'),
-                            "subject": headers.get('Subject', '(No Subject)'),
-                            "from": headers.get('From', ''),
-                            "date": headers.get('Date', '')
+                            "subject": get_header('Subject') or '(No Subject)',
+                            "from": get_header('From'),
+                            "to": get_header('To'),
+                            "date": get_header('Date'),
+                            "labelIds": msg_detail.get('labelIds', [])
                         })
                     except Exception:
                         continue 
