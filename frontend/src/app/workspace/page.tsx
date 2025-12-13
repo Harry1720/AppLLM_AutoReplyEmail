@@ -62,18 +62,24 @@ export default function WorkspacePage() {
         const parseFrom = (fromHeader?: string) => {
           if (!fromHeader) return { name: 'Unknown', email: '' };
           
-          // Extract email address
+          // Check if fromHeader has <email> format
           const emailMatch = fromHeader.match(/<(.+?)>/);
-          const emailAddr = emailMatch ? emailMatch[1].trim() : fromHeader.trim();
           
-          // Extract name and remove quotes
-          let name = fromHeader.replace(/<.*>/, '').trim();
-          // Remove surrounding quotes (both single and double)
-          name = name.replace(/^["']|["']$/g, '');
-          // If name is empty, use email username
-          name = name || emailAddr.split('@')[0];
-          
-          return { name: name || 'Unknown', email: emailAddr };
+          if (emailMatch) {
+            // Format: "Name <email@domain.com>"
+            const emailAddr = emailMatch[1].trim();
+            let name = fromHeader.replace(/<.*>/, '').trim();
+            // Remove surrounding quotes (both single and double)
+            name = name.replace(/^["']|["']$/g, '');
+            // If name is empty after removing email part, use email username
+            name = name || emailAddr.split('@')[0];
+            return { name, email: emailAddr };
+          } else {
+            // Plain email address without name: "email@domain.com"
+            const emailAddr = fromHeader.trim();
+            const name = emailAddr.split('@')[0]; // Extract username before @
+            return { name, email: emailAddr };
+          }
         };
 
         const { name: senderName, email: senderEmail } = parseFrom(email.from);
@@ -190,20 +196,26 @@ export default function WorkspacePage() {
       const parseFrom = (fromHeader?: string) => {
         if (!fromHeader) return { name: 'Unknown', email: '' };
         
-        // Extract email address
+        // Check if fromHeader has <email> format
         const emailMatch = fromHeader.match(/<(.+?)>/);
-        const emailAddr = emailMatch ? emailMatch[1].trim() : fromHeader.trim();
         
-        // Extract name and remove quotes
-        let name = fromHeader.replace(/<.*>/, '').trim();
-        // Remove surrounding quotes (both single and double)
-        name = name.replace(/^["']|["']$/g, '');
-        // Remove escaped quotes
-        name = name.replace(/\\"/g, '"');
-        // If name is empty, use email username
-        name = name || emailAddr.split('@')[0];
-        
-        return { name: name || 'Unknown', email: emailAddr };
+        if (emailMatch) {
+          // Format: "Name <email@domain.com>"
+          const emailAddr = emailMatch[1].trim();
+          let name = fromHeader.replace(/<.*>/, '').trim();
+          // Remove surrounding quotes (both single and double)
+          name = name.replace(/^["']|["']$/g, '');
+          // Remove escaped quotes
+          name = name.replace(/\\"/g, '"');
+          // If name is empty after removing email part, use email username
+          name = name || emailAddr.split('@')[0];
+          return { name, email: emailAddr };
+        } else {
+          // Plain email address without name: "email@domain.com"
+          const emailAddr = fromHeader.trim();
+          const name = emailAddr.split('@')[0]; // Extract username before @
+          return { name, email: emailAddr };
+        }
       };
 
       const { name: senderName, email: senderEmail } = parseFrom(emailDetail.from);
@@ -521,7 +533,7 @@ export default function WorkspacePage() {
                   </svg>
                   <h3 className="mt-2 text-sm font-medium text-gray-900">Email của bạn</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    Chọn một email từ danh sách để xem nội dung chi tiết
+                    Chọn một email từ danh sách để xem nội dung chi tiết. <br />Lưu ý khi nhấp chọn một email vui lòng đợi một lát để ứng dụng hiển thị.
                   </p>
                 </div>
               </div>
@@ -545,7 +557,7 @@ export default function WorkspacePage() {
                 </svg>
                 <h3 className="mt-2 text-sm font-medium text-gray-900">Trợ lý AI</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  Nhận gợi ý trả lời email từ AI
+                  Gợi ý trả lời email từ AI. <br />Hãy chọn tối đa 5 email từ danh sách để AI giúp bạn trả lời.
                 </p>
               </div>
             </div>

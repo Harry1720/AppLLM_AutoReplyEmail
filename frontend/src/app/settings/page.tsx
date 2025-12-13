@@ -112,7 +112,7 @@ export default function SettingsPage() {
               Cài đặt
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              Quản lý tài khoản và tùy chỉnh ứng dụng
+              Quản lý tài khoản và kiểm tra thời gian đồng bộ
             </p>
           </div>
 

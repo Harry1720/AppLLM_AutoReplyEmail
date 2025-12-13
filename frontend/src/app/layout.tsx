@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Trợ lý Email thông minh",
   description: "Ứng dụng trả lời email tự động thông minh với AI",
+  icons: {
+    icon: '/logo_tab.png',
+  },
 };
 
 export default function RootLayout({

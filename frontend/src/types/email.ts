@@ -11,6 +11,14 @@ export interface Email {
   draftId?: string; // ID của draft được tạo bởi AI
   aiReplyGenerated?: boolean; // Đã tạo câu trả lời AI chưa
   replySent?: boolean; // Đã gửi trả lời chưa
+  attachments?: EmailAttachment[]; // File đính kèm
+}
+
+export interface EmailAttachment {
+  filename: string;
+  mimeType: string;
+  size?: number;
+  attachmentId?: string;
 }
 
 export interface AiSuggestion {

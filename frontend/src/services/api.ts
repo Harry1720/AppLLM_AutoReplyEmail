@@ -85,7 +85,7 @@ export const exchangeCodeForToken = async (code: string) => {
 };
 
 // Fetch emails from backend
-export const fetchEmails = async (limit: number = 10, pageToken?: string) => {
+export const fetchEmails = async (limit: number = 10, pageToken?: string, folder?: string) => {
   const token = getAuthToken();
   
   if (!token) {
@@ -96,6 +96,9 @@ export const fetchEmails = async (limit: number = 10, pageToken?: string) => {
     let url = `${API_BASE_URL}/emails?limit=${limit}`;
     if (pageToken) {
       url += `&page_token=${pageToken}`;
+    }
+    if (folder) {
+      url += `&folder=${folder}`;
     }
 
     const response = await fetch(url, {
@@ -123,6 +126,11 @@ export const fetchEmails = async (limit: number = 10, pageToken?: string) => {
     console.error('Error fetching emails:', error);
     throw error;
   }
+};
+
+// Fetch sent emails from backend
+export const fetchSentEmails = async (limit: number = 10, pageToken?: string) => {
+  return fetchEmails(limit, pageToken, 'SENT');
 };
 
 // Send email
