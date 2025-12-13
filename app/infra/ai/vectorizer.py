@@ -1,6 +1,5 @@
 import os
 import logging
-import uuid
 from datetime import datetime, timezone
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -82,11 +81,9 @@ class EmailVectorizer:
                         "date": detail['date']
                     } for _ in chunks]
 
-                    # Debug log để kiểm tra user_id
-                    logging.info(f"🔍 Đang lưu email với user_id: {self.user_id}")
-                    
                     # Lưu trực tiếp vào Supabase thay vì dùng vectorstore
                     # để kiểm soát chính xác user_id được insert
+                    import uuid
                     for i, chunk in enumerate(chunks):
                         # Tạo embedding cho chunk
                         embedding = self.embeddings.embed_query(chunk)

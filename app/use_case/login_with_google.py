@@ -25,7 +25,7 @@ class LoginWithGoogleUseCase:
             }
         }
 
-    def execute(self, auth_code: str):
+    def execute(self, auth_code: str, background_tasks=None):
         try:
             # 1. Thiết lập Flow
             # redirect_uri phải khớp 100% với link bạn dùng trên trình duyệt
@@ -87,6 +87,40 @@ class LoginWithGoogleUseCase:
             os.getenv("JWT_SECRET"),
             algorithm="HS256"
         )
+
+        # 6. TỰ ĐỘNG SYNC EMAIL SAU KHI ĐĂNG NHẬP
+        # Lấy refresh_token từ DB (vì Google chỉ trả refresh_token lần đầu)
+        if background_tasks:
+            # Lấy refresh_token từ user object (đã có trong DB)
+            stored_refresh_token = user.google_refresh_token if hasattr(user, 'google_refresh_token') else None
+            
+            # Ưu tiên refresh_token mới từ Google, không có thì dùng token đã lưu
+            final_refresh_token = refresh_token or stored_refresh_token
+            
+            if final_refresh_token:
+                token_data = {
+                    'token': credentials.token,
+                    'refresh_token': final_refresh_token,
+                    'token_uri': credentials.token_uri,
+                    'client_id': credentials.client_id,
+                    'client_secret': credentials.client_secret,
+                    'scopes': credentials.scopes
+                }
+                
+                def run_sync_after_login():
+                    try:
+                        print(f"🔄 Tự động sync email sau đăng nhập cho user {user.id}...")
+                        from app.infra.ai.vectorizer import EmailVectorizer
+                        vec = EmailVectorizer(user.id, token_data)
+                        result = vec.sync_user_emails()
+                        print(f"✅ Kết quả auto-sync: {result}")
+                    except Exception as e:
+                        print(f"❌ Lỗi auto-sync sau login: {e}")
+                
+                background_tasks.add_task(run_sync_after_login)
+                print(f"📧 Đã thêm task tự động sync email cho user {user.id}")
+            else:
+                print(f"⚠️ Không tìm thấy refresh_token cho user {user.id}, bỏ qua auto-sync")
 
         return {
             "access_token": token,
