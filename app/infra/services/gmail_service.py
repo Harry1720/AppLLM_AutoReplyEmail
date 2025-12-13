@@ -35,6 +35,9 @@ class GmailService:
             # Gmail chia body thành nhiều phần (parts), cần hàm đệ quy để tìm
             body_html = self._get_body_from_payload(msg['payload'])
             
+            # Lấy Attachments
+            attachments = self._get_attachments_from_payload(msg['payload'])
+            
             return {
                 "id": msg['id'],
                 "subject": get_header('Subject') or '(No Subject)',
@@ -42,7 +45,8 @@ class GmailService:
                 "to": get_header('To'),
                 "date": get_header('Date'),
                 "body": body_html, # Nội dung HTML để hiển thị lên web
-                "snippet": msg.get('snippet')
+                "snippet": msg.get('snippet'),
+                "attachments": attachments
             }
 
         except Exception as e:
@@ -82,6 +86,41 @@ class GmailService:
                         return found_body
         
         return body if body else "(Không thể hiển thị nội dung email này)"
+
+    # --- 3. HÀM PHỤ: LẤY ATTACHMENTS ---
+    def _get_attachments_from_payload(self, payload):
+        """
+        Tìm kiếm các file đính kèm trong email
+        """
+        attachments = []
+        
+        if 'parts' in payload:
+            for part in payload['parts']:
+                # Kiểm tra nếu part có filename và không phải text/html hoặc text/plain
+                filename = part.get('filename')
+                mime_type = part.get('mimeType', '')
+                
+                if filename and mime_type not in ['text/html', 'text/plain']:
+                    attachment_id = None
+                    size = 0
+                    
+                    # Lấy attachment ID và size
+                    if 'body' in part:
+                        attachment_id = part['body'].get('attachmentId')
+                        size = part['body'].get('size', 0)
+                    
+                    attachments.append({
+                        'filename': filename,
+                        'mimeType': mime_type,
+                        'size': size,
+                        'attachmentId': attachment_id
+                    })
+                
+                # Đệ quy nếu có parts con
+                elif 'parts' in part:
+                    attachments.extend(self._get_attachments_from_payload(part))
+        
+        return attachments
 
  # --- READ (Đọc danh sách Email - Nâng cấp) ---
     def get_emails(self, max_results=10, page_token=None, folder="INBOX", status="ALL"):
