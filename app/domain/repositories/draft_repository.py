@@ -191,3 +191,34 @@ class DraftRepository:
         except Exception as e:
             logging.error(f"❌ Lỗi lấy sent email IDs: {e}")
             return []
+    
+    def update_draft_content(self, gmail_draft_id: str, subject: str, body: str, recipient: str):
+        """
+        Cập nhật nội dung draft trong Supabase (subject, body, recipient)
+        
+        Args:
+            gmail_draft_id: Gmail Draft ID
+            subject: Tiêu đề mới
+            body: Nội dung mới
+            recipient: Email người nhận mới
+        
+        Returns:
+            Bool: True nếu thành công, False nếu thất bại
+        """
+        try:
+            update_res = self.db.table("email_drafts").update({
+                "subject": subject,
+                "body": body,
+                "recipient": recipient
+            }).eq("draft_id", gmail_draft_id).execute()
+            
+            if update_res.data and len(update_res.data) > 0:
+                logging.info(f"✅ Đã cập nhật nội dung draft {gmail_draft_id} trong Supabase")
+                return True
+            else:
+                logging.warning(f"⚠️ Không tìm thấy draft với Gmail Draft ID: {gmail_draft_id}")
+                return False
+            
+        except Exception as e:
+            logging.error(f"❌ Lỗi cập nhật nội dung draft: {e}")
+            return False

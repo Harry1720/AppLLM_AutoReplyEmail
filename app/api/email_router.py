@@ -258,10 +258,40 @@ def update_existing_draft(
 
 # --- API GỬI BẢN NHÁP ĐI ---
 @email_router.post("/drafts/{draft_id}/send")
-def send_existing_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
+async def send_existing_draft(
+    draft_id: str,
+    subject: str = Form(None, description="Tiêu đề email (tuỳ chọn)"),
+    body: str = Form(None, description="Nội dung email (tuỳ chọn)"),
+    recipient: str = Form(None, description="Email người nhận (tuỳ chọn)"),
+    token_data: dict = Depends(get_token_dependency)
+):
+    """
+    Gửi bản nháp đi. Nếu người dùng đã chỉnh sửa nội dung,
+    cần truyền subject, body, recipient để cập nhật vào Supabase.
+    """
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
+    # Nếu có nội dung mới (người dùng đã chỉnh sửa), cập nhật vào Supabase trước
+    if body or subject or recipient:
+        # Lấy draft hiện tại từ Supabase để lấy giá trị mặc định
+        current_draft = draft_repo.get_draft_by_gmail_id(draft_id)
+        
+        if current_draft:
+            # Sử dụng giá trị mới nếu có, không thì giữ nguyên
+            updated_subject = subject if subject else current_draft.get("subject", "")
+            updated_body = body if body else current_draft.get("body", "")
+            updated_recipient = recipient if recipient else current_draft.get("recipient", "")
+            
+            # Cập nhật nội dung trong Supabase
+            draft_repo.update_draft_content(
+                draft_id, 
+                updated_subject, 
+                updated_body, 
+                updated_recipient
+            )
+    
+    # Gửi draft qua Gmail
     result = service.send_draft(draft_id)
     
     if result:
