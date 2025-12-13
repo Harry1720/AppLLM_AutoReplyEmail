@@ -145,21 +145,22 @@ export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }
 
     setIsSending(true);
     try {
-      // Check if content was modified
+      // Kiểm tra xem nội dung có thay đổi không
       const contentChanged = editedContent.trim() !== originalDraftContent.trim();
       
+      // Chuẩn bị thông tin email
+      const replySubject = email.subject.startsWith('Re: ') 
+        ? email.subject 
+        : `Re: ${email.subject}`;
+      
+      // Gửi draft - nếu có thay đổi thì gửi kèm nội dung mới để cập nhật Supabase
       if (contentChanged) {
-        // Update draft first
-        console.log('Content changed, updating draft...');
-        const replySubject = email.subject.startsWith('Re: ') 
-          ? email.subject 
-          : `Re: ${email.subject}`;
-        
-        await updateDraft(email.draftId, email.senderEmail, replySubject, editedContent);
+        console.log('Content changed, sending with updated content to Supabase...');
+        await sendDraft(email.draftId, replySubject, editedContent, email.senderEmail);
+      } else {
+        // Không có thay đổi, chỉ gửi draft bình thường
+        await sendDraft(email.draftId);
       }
-
-      // Send the draft
-      await sendDraft(email.draftId);
       
       // Call parent callback to update email state
       await onSendReply(editedContent);

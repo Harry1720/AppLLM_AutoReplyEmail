@@ -432,7 +432,7 @@ export const checkSyncStatus = async () => {
 };
 
 // Send existing draft (POST /drafts/{draft_id}/send)
-export const sendDraft = async (draftId: string) => {
+export const sendDraft = async (draftId: string, subject?: string, body?: string, recipient?: string) => {
   const token = getAuthToken();
   
   if (!token) {
@@ -440,12 +440,26 @@ export const sendDraft = async (draftId: string) => {
   }
 
   try {
+    // Tạo FormData nếu có nội dung đã chỉnh sửa
+    let requestBody = null;
+    let headers: HeadersInit = {
+      'Authorization': `Bearer ${token}`,
+    };
+
+    if (subject || body || recipient) {
+      const formData = new FormData();
+      if (subject) formData.append('subject', subject);
+      if (body) formData.append('body', body);
+      if (recipient) formData.append('recipient', recipient);
+      requestBody = formData;
+    } else {
+      headers['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(`${API_BASE_URL}/drafts/${draftId}/send`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
+      body: requestBody,
     });
 
     if (!response.ok) {
