@@ -149,12 +149,19 @@ class EmailReasoningSystem:
            - Đây là thư "REPLY" (Trả lời).
            - Tuyệt đối KHÔNG chép lại nội dung của người gửi.
            - Ví dụ: Họ hỏi "Khỏe không?", bạn trả lời "Tôi khỏe", KHÔNG ĐƯỢC viết lại "Khỏe không?".
+           - Khách nói "Chào bộ phận quản lý" -> ĐÓ LÀ LỜI HỌ NÓI VỚI BẠN.
+           - BẠN KHÔNG ĐƯỢC CHÀO LẠI "Chào bộ phận quản lý".
+           - BẠN PHẢI CHÀO TÊN HỌ: "Chào {sender}," hoặc "Chào bạn {sender},".
 
         3. 🎯 NỘI DUNG:
            - Đi thẳng vào câu trả lời. Ngắn gọn, súc tích.
            -Không thêm mở bài, kết bài dài dòng.
            - Trả lời đúng trọng tâm câu hỏi.
            - Không bịa ra thông tin ngày giờ cụ thể nếu không biết (dùng [Time], [Date]...).
+
+        4. 🛡️ THÁI ĐỘ (Dựa trên nội dung):
+           - Nếu khách đang giận (khiếu nại) -> Hãy xin lỗi, nhún nhường, xưng "Em/Mình" hoặc "Chúng tôi".
+           - Nếu là công việc -> Chuyên nghiệp.
 
         ĐỊNH DẠNG OUTPUT (JSON ONLY):
         Chỉ trả về JSON hợp lệ. Không được có bất kỳ dòng chữ nào khác bên ngoài JSON.
