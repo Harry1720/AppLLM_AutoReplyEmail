@@ -525,27 +525,45 @@ class GmailService:
         try:
             print(f"✏️ Đang chỉnh sửa draft {draft_id}...")
 
-            # 1. Đóng gói nội dung mới (Giống hệt lúc tạo/gửi)
+            # 1. Lấy draft hiện tại để preserve threadId và References
+            current_draft = self.service.users().drafts().get(
+                userId='me',
+                id=draft_id,
+                format='metadata'
+            ).execute()
+            
+            thread_id = current_draft['message'].get('threadId')
+            headers = {h['name']: h['value'] for h in current_draft['message']['payload']['headers']}
+            
+            # 2. Đóng gói nội dung mới VỚI threadID và References
             message = MIMEMultipart()
             message['to'] = to
             message['subject'] = subject
             
-            # Lưu ý: Sửa draft thường chỉ sửa chữ, nên mình làm đơn giản không file
-            # Nếu muốn sửa file thì copy logic attachment từ hàm send_email qua
+            # ⭐ PRESERVE thread references
+            if 'In-Reply-To' in headers:
+                message['In-Reply-To'] = headers['In-Reply-To']
+            if 'References' in headers:
+                message['References'] = headers['References']
+            
             msg_text = MIMEText(body_content, 'html', 'utf-8')
             message.attach(msg_text)
 
             raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
             
-            # 2. Gọi lệnh UPDATE
-            # Cấu trúc body của Update giống hệt Create
+            # 3. Gọi lệnh UPDATE với threadId
             updated_draft = self.service.users().drafts().update(
                 userId='me', 
-                id=draft_id, # Phải có ID để biết sửa cái nào
-                body={'message': {'raw': raw}}
+                id=draft_id,
+                body={
+                    'message': {
+                        'raw': raw,
+                        'threadId': thread_id  # ⭐ Giữ nguyên thread
+                    }
+                }
             ).execute()
             
-            print(f"✅ Đã cập nhật draft thành công!")
+            print(f"✅ Đã cập nhật draft thành công (giữ nguyên thread {thread_id})!")
             return updated_draft
 
         except Exception as e:

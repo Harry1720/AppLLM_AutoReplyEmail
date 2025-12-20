@@ -5,8 +5,9 @@ from app.api.deps import get_token_dependency
 from app.api.user_router import get_current_user_id
 from app.core.enums import EmailFolder, EmailStatus
 from app.domain.repositories.draft_repository import DraftRepository
+import logging
+
 email_router = APIRouter()
-from typing import Optional
 
 # 1. API Đọc danh sách (Read)
 @email_router.get("/emails")
@@ -267,29 +268,50 @@ async def send_existing_draft(
 ):
     """
     Gửi bản nháp đi. Nếu người dùng đã chỉnh sửa nội dung,
-    cần truyền subject, body, recipient để cập nhật vào Supabase.
+    cần truyền subject, body, recipient để cập nhật vào Supabase và Gmail.
     """
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
-    # Nếu có nội dung mới (người dùng đã chỉnh sửa), cập nhật vào Supabase trước
-    if body or subject or recipient:
-        # Lấy draft hiện tại từ Supabase để lấy giá trị mặc định
-        current_draft = draft_repo.get_draft_by_gmail_id(draft_id)
+    # Lấy draft hiện tại từ Supabase để so sánh
+    current_draft = draft_repo.get_draft_by_gmail_id(draft_id)
+    
+    if current_draft:
+        # Xác định giá trị cuối cùng (ưu tiên giá trị mới nếu có)
+        final_subject = subject if subject else current_draft.get("subject", "")
+        final_body = body if body else current_draft.get("body", "")
+        final_recipient = recipient if recipient else current_draft.get("recipient", "")
         
-        if current_draft:
-            # Sử dụng giá trị mới nếu có, không thì giữ nguyên
-            updated_subject = subject if subject else current_draft.get("subject", "")
-            updated_body = body if body else current_draft.get("body", "")
-            updated_recipient = recipient if recipient else current_draft.get("recipient", "")
+        # ⭐ CHỈ UPDATE KHI NỘI DUNG THỰC SỰ KHÁC
+        content_changed = (
+            final_subject != current_draft.get("subject", "") or
+            final_body != current_draft.get("body", "") or
+            final_recipient != current_draft.get("recipient", "")
+        )
+        
+        if content_changed:
+            logging.info(f"📝 Phát hiện nội dung draft {draft_id} đã được chỉnh sửa, đang cập nhật...")
             
-            # Cập nhật nội dung trong Supabase
+            # 1. Cập nhật nội dung trong Supabase
             draft_repo.update_draft_content(
                 draft_id, 
-                updated_subject, 
-                updated_body, 
-                updated_recipient
+                final_subject, 
+                final_body, 
+                final_recipient
             )
+            
+            # 2. Cập nhật nội dung trên Gmail (giữ nguyên threadID)
+            gmail_update_result = service.update_draft(
+                draft_id,
+                final_recipient,
+                final_subject,
+                final_body
+            )
+            
+            if not gmail_update_result:
+                raise HTTPException(status_code=500, detail="Không thể cập nhật bản nháp trên Gmail")
+        else:
+            logging.info(f"ℹ️ Nội dung draft {draft_id} không thay đổi, bỏ qua cập nhật")
     
     # Gửi draft qua Gmail
     result = service.send_draft(draft_id)
