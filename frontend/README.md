@@ -1,8 +1,36 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment Setup
+
+### 1. Copy environment file
+
+```bash
+cp .env.example .env.local
+```
+
+### 2. Configure environment variables
+
+Edit `.env.local` and update the following values:
+
+- `NEXT_PUBLIC_API_URL`: Backend API URL (default: http://localhost:8000)
+- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+- `NEXT_PUBLIC_GOOGLE_REDIRECT_URI`: OAuth redirect URI (default: http://localhost:3000/auth/callback)
+
+**Important:** Make sure your Google OAuth redirect URI is added to the allowed redirect URIs in Google Cloud Console.
+
 ## Getting Started
 
-First, run the development server:
+First, install dependencies:
+
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+```
+
+Then, run the development server:
 
 ```bash
 npm run dev

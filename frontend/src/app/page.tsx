@@ -21,14 +21,14 @@ export default function LandingPage() {
     setIsLoading(true);
     
     // Google OAuth URL with all required parameters
-        const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
-          client_id: '280948850816-0s5nb712jucaa3c7v5jam0ub32c4hkgt.apps.googleusercontent.com', // Dùng client_id từ .env
-          redirect_uri: 'http://localhost:3000/auth/callback',
-          response_type: 'code',
-          scope: 'email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify',
-          access_type: 'offline',
-          prompt: 'select_account'
-        }).toString();
+    const googleAuthUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+      client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
+      redirect_uri: process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI || '',
+      response_type: 'code',
+      scope: 'email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify',
+      access_type: 'offline',
+      prompt: 'select_account'
+    }).toString();
     
     // Redirect to Google OAuth
     window.location.href = googleAuthUrl;
