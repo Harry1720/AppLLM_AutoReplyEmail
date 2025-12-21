@@ -8,9 +8,11 @@ import EmailComposer from '@/components/EmailComposer';
 import EmailDetail from '@/components/EmailDetail';
 import Header from '@/components/Header';
 import { fetchSentEmails, fetchEmailDetail, getAuthToken, sendEmail } from '@/services/api';
+import { useToast } from '@/components/ToastContainer';
 
 export default function ComposePage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,8 +176,8 @@ export default function ComposePage() {
       // Clear draft from localStorage
       localStorage.removeItem('email_draft');
       
-      // Show success alert
-      alert('Email đã được gửi thành công!');
+      // Show success toast
+      showToast('Email đã được gửi thành công!', 'success');
       
       // Reload sent emails
       await loadSentEmails();

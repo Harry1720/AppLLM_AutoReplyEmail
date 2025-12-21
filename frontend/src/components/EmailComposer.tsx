@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './ConfirmDialogContainer';
 
 interface EmailComposerProps {
   onSend: (to: string, subject: string, body: string, files?: File[]) => Promise<{ success: boolean }>;
@@ -13,6 +15,8 @@ interface DraftData {
 }
 
 export default function EmailComposer({ onSend }: EmailComposerProps) {
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -56,7 +60,7 @@ export default function EmailComposer({ onSend }: EmailComposerProps) {
     // Validate
     if (!to.trim()) {
       setError('Vui lòng nhập địa chỉ email người nhận');
-      alert('Vui lòng nhập địa chỉ email người nhận');
+      showToast('Vui lòng nhập địa chỉ email người nhận', 'warning');
       return;
     }
 
@@ -67,7 +71,7 @@ export default function EmailComposer({ onSend }: EmailComposerProps) {
 
     if (!body.trim()) {
       setError('Vui lòng nhập nội dung email');
-      alert('Vui lòng nhập nội dung email');
+      showToast('Vui lòng nhập nội dung email', 'warning');
       return;
     }
 
@@ -75,14 +79,18 @@ export default function EmailComposer({ onSend }: EmailComposerProps) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(to.trim())) {
       setError('Địa chỉ email không hợp lệ');
-      alert('Địa chỉ email không hợp lệ');
+      showToast('Địa chỉ email không hợp lệ', 'error');
       return;
     }
 
     // Confirm before sending
-    const confirmed = confirm(
-      `Bạn có chắc chắn muốn gửi email này đến ${to.trim()}?`
-    );
+    const confirmed = await confirm({
+      title: 'Xác nhận gửi email',
+      message: `Bạn có chắc chắn muốn gửi email này đến ${to.trim()}?`,
+      confirmText: 'Gửi',
+      cancelText: 'Hủy',
+      type: 'info'
+    });
     
     if (!confirmed) {
       return;
@@ -148,7 +156,7 @@ export default function EmailComposer({ onSend }: EmailComposerProps) {
           {/* To Field */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Người nhận <span className="text-red-500">*</span>
+              Email người nhận <span className="text-red-500">*</span>
             </label>
             <input
               type="email"

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import AuthGuard from "@/components/AuthGuard";
+import { ToastProvider } from "@/components/ToastContainer";
+import { ConfirmDialogProvider } from "@/components/ConfirmDialogContainer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,9 +34,13 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthGuard>
-        {children}
-        </AuthGuard>
+        <ConfirmDialogProvider>
+          <ToastProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </ToastProvider>
+        </ConfirmDialogProvider>
       </body>
     </html>
   );

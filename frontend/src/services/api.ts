@@ -142,10 +142,13 @@ export const sendEmail = async (to: string, subject: string, body: string, files
   }
 
   try {
+    // Convert line breaks to HTML <br> tags and wrap in basic HTML structure
+    const htmlBody = `<html><body><div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">${body.replace(/\n/g, '<br>')}</div></body></html>`;
+    
     const formData = new FormData();
     formData.append('to', to);
     formData.append('subject', subject);
-    formData.append('body', body);
+    formData.append('body', htmlBody);
     
     // Add files if provided
     if (files && files.length > 0) {

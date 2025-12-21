@@ -8,9 +8,11 @@ import EmailContent from '@/components/EmailContent';
 import AiSuggestionPanel from '@/components/AiSuggestionPanel';
 import Header from '@/components/Header';
 import { fetchEmails, fetchEmailDetail, getAuthToken, getUserInfo, generateAiReply, sendEmail, getAllDrafts, getSentEmails } from '@/services/api';
+import { useToast } from '@/components/ToastContainer';
 
 export default function WorkspacePage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -322,11 +324,11 @@ export default function WorkspacePage() {
         });
       }
       
-      alert('Gợi ý AI đã được tạo lại!');
+      showToast('Gợi ý AI đã được tạo lại!', 'success');
     } catch (err) {
       console.error('Error regenerating AI:', err);
       const errorMessage = err instanceof Error ? err.message : 'Không thể tạo gợi ý AI';
-      alert(`Lỗi: ${errorMessage}`);
+      showToast(`Lỗi: ${errorMessage}`, 'error');
     } finally {
       setIsGeneratingAi(false);
     }
@@ -335,7 +337,7 @@ export default function WorkspacePage() {
   // Handle checkbox change
   const handleEmailCheckboxChange = (emailId: string, checked: boolean) => {
     if (checked && selectedEmailIds.length >= 5) {
-      alert('Bạn chỉ có thể chọn tối đa 5 email');
+      showToast('Bạn chỉ có thể chọn tối đa 5 email', 'warning');
       return;
     }
     
@@ -351,7 +353,7 @@ export default function WorkspacePage() {
   // Generate AI replies for selected emails
   const handleGenerateAiReplies = async () => {
     if (selectedEmailIds.length === 0) {
-      alert('Vui lòng chọn ít nhất 1 email');
+      showToast('Vui lòng chọn ít nhất 1 email', 'warning');
       return;
     }
 
@@ -396,7 +398,7 @@ export default function WorkspacePage() {
     const successCount = results.filter((r) => r.success).length;
     const failCount = results.filter((r) => !r.success).length;
     
-    alert(`Đã tạo xong!\nThành công: ${successCount}\nThất bại: ${failCount}`);
+    showToast(`Đã tạo xong!\nThành công: ${successCount}\nThất bại: ${failCount}`, 'info', 5000);
   };
 
   // Load more emails

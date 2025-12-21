@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Email } from '@/types/email';
 import { sendDraft, updateDraft, deleteDraft, getDraftDetail } from '@/services/api';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './ConfirmDialogContainer';
 
 interface AiSuggestionPanelProps {
   email: Email;
@@ -61,6 +63,8 @@ interface AiSuggestionPanelProps {
 // };
 
 export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }: AiSuggestionPanelProps) {
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [originalDraftContent, setOriginalDraftContent] = useState(''); // Store original draft from Gmail
   const [isEditing, setIsEditing] = useState(false);
@@ -134,12 +138,12 @@ export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }
 
   const handleSend = async () => {
     if (isDraftDeleted) {
-      alert('Bản nháp đã bị xóa. Vui lòng tạo lại câu trả lời.');
+      showToast('Bản nháp đã bị xóa. Vui lòng tạo lại câu trả lời.', 'error');
       return;
     }
 
     if (!email.draftId) {
-      alert('Không có draft ID. Vui lòng tạo câu trả lời AI trước.');
+      showToast('Không có draft ID. Vui lòng tạo câu trả lời AI trước.', 'error');
       return;
     }
 
@@ -165,12 +169,12 @@ export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }
       // Call parent callback to update email state
       await onSendReply(editedContent);
       
-      alert('Email đã được gửi thành công!');
+      showToast('Email đã được gửi thành công!', 'success');
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to send email:', error);
       const errorMessage = error instanceof Error ? error.message : 'Không thể gửi email';
-      alert(`Lỗi: ${errorMessage}`);
+      showToast(`Lỗi: ${errorMessage}`, 'error');
     } finally {
       setIsSending(false);
     }
@@ -178,13 +182,17 @@ export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }
 
   const handleDeleteDraft = async () => {
     if (!email.draftId) {
-      alert('Không có bản nháp để xóa.');
+      showToast('Không có bản nháp để xóa.', 'warning');
       return;
     }
 
-    const confirmed = confirm(
-      'Bạn có chắc chắn muốn xóa bản nháp này?\nLưu ý: Nếu xóa, bản nháp trên Gmail cũng sẽ bị mất!'
-    );
+    const confirmed = await confirm({
+      title: 'Xóa bản nháp',
+      message: 'Bạn có chắc chắn muốn xóa bản nháp này?\nLưu ý: Nếu xóa, bản nháp trên Gmail cũng sẽ bị mất!',
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      type: 'danger'
+    });
 
     if (!confirmed) return;
 
@@ -200,14 +208,14 @@ export default function AiSuggestionPanel({ email, onSendReply, onRegenerateAi }
       
       // Show detailed message
       if (result.supabase_deleted) {
-        alert('Bản nháp đã được xóa thành công từ cả Gmail và Supabase! Vui lòng tải lại trang để cập nhật sự thay đổi.');
+        showToast('Bản nháp đã được xóa thành công từ cả Gmail và Supabase!\nVui lòng tải lại trang để cập nhật sự thay đổi.', 'success');
       } else {
-        alert('Bản nháp đã được xóa từ Gmail (không tìm thấy trong Supabase).');
+        showToast('Bản nháp đã được xóa từ Gmail (không tìm thấy trong Supabase).', 'success');
       }
     } catch (error) {
       console.error('Failed to delete draft:', error);
       const errorMessage = error instanceof Error ? error.message : 'Không thể xóa bản nháp';
-      alert(`Lỗi: ${errorMessage}`);
+      showToast(`Lỗi: ${errorMessage}`, 'error');
     }
   };
 

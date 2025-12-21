@@ -5,9 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { fetchUserProfile, fetchEmails, deleteUserAccount, logout, getAuthToken } from '@/services/api';
+import { useToast } from '@/components/ToastContainer';
+import { useConfirm } from '@/components/ConfirmDialogContainer';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   interface UserProfile {
     id: string;
     email: string;
@@ -56,34 +60,50 @@ export default function SettingsPage() {
       setLastSyncTime(new Date());
       
       // Hiển thị thông báo thành công
-      alert('Đồng bộ email thành công!');
+      showToast('Đồng bộ email thành công!', 'success');
       
     } catch (error: unknown) {
       console.error('Error syncing emails:', error);
       const errorMessage = error instanceof Error ? error.message : 'Có lỗi xảy ra khi đồng bộ';
-      alert('Lỗi: ' + errorMessage);
+      showToast('Lỗi: ' + errorMessage, 'error');
     } finally {
       setIsSyncing(false);
     }
   };
 
   const handleDeleteAccount = async () => {
-    if (!confirm('Bạn có chắc chắn muốn ngắt kết nối tài khoản? Hành động này không thể hoàn tác!')) {
+    const confirmed = await confirm({
+      title: 'Ngắt kết nối tài khoản',
+      message: 'Bạn có chắc chắn muốn ngắt kết nối tài khoản? Hành động này không thể hoàn tác!',
+      confirmText: 'Ngắt kết nối',
+      cancelText: 'Hủy',
+      type: 'danger'
+    });
+
+    if (!confirmed) {
       return;
     }
 
     try {
       await deleteUserAccount();
-      alert('Tài khoản đã được ngắt kết nối với ứng dụng thành công.\nĐể truy cập lại hệ thống, vui lòng thực hiện thêm bước ngắt kết nối với ứng dụng Gmail Auto Reply (ứng dụng bên thứ ba) trong phần "Quản lý tài khoản Google của bạn"');
-      router.push('/');
+      showToast('Tài khoản đã được ngắt kết nối với ứng dụng thành công.\nĐể truy cập lại hệ thống, vui lòng thực hiện thêm bước ngắt kết nối với ứng dụng Gmail Auto Reply (ứng dụng bên thứ ba) trong phần "Quản lý tài khoản Google của bạn"', 'success', 8000);
+      setTimeout(() => router.push('/'), 8000);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Có lỗi xảy ra';
-      alert('Lỗi: ' + errorMessage);
+      showToast('Lỗi: ' + errorMessage, 'error');
     }
   };
 
-  const handleLogout = () => {
-    if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+  const handleLogout = async () => {
+    const confirmed = await confirm({
+      title: 'Đăng xuất',
+      message: 'Bạn có chắc chắn muốn đăng xuất?',
+      confirmText: 'Đăng xuất',
+      cancelText: 'Hủy',
+      type: 'warning'
+    });
+
+    if (confirmed) {
       logout();
       router.push('/');
     }

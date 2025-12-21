@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { fetchUserProfile, logout, getAuthToken } from '@/services/api';
 import Image from 'next/image';
+import { useConfirm } from './ConfirmDialogContainer';
 
 interface HeaderProps {
   onSync?: () => Promise<void>;
@@ -13,6 +14,7 @@ interface HeaderProps {
 export default function Header({ onSync, isSyncing = false }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { confirm } = useConfirm();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [userProfile, setUserProfile] = useState<{
     id: string;
@@ -47,9 +49,17 @@ export default function Header({ onSync, isSyncing = false }: HeaderProps) {
     router.push('/settings');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setShowUserMenu(false);
-    if (confirm('Bạn có chắc chắn muốn đăng xuất?')) {
+    const confirmed = await confirm({
+      title: 'Đăng xuất',
+      message: 'Bạn có chắc chắn muốn đăng xuất?',
+      confirmText: 'Đăng xuất',
+      cancelText: 'Hủy',
+      type: 'warning'
+    });
+
+    if (confirmed) {
       logout();
       router.push('/');
     }
