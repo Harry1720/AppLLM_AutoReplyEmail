@@ -1,15 +1,38 @@
 # Python virtual environment
 venv/
+env/
+.venv/
+
+# Environment variables (IMPORTANT!)
+.env
+.env.local
+.env.*.local
 
 # Credentials & tokens
 credentials.json
 token.pickle
-.env
+token.json
 
 # Cache & misc
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
 
+# Database
 vector_db/
 *.bin
 *.sqlite3
+*.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
