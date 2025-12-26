@@ -13,7 +13,6 @@ class EmailVectorizer:
     def __init__(self, user_id: str, token_data: dict):
         self.user_id = user_id
         
-        # Kết nối Gmail bằng Token thật của User
         self.gmail = GmailService(token_data)
 
         # Cấu hình AI & DB
@@ -32,23 +31,19 @@ class EmailVectorizer:
             query_name="match_documents"
         )
 
-    def sync_user_emails(self):
-        logging.info(f"🚀 Bắt đầu đồng bộ Email Đã Gửi (Sent) cho User: {self.user_id}")
-        
-        # 1. Lấy danh sách 50 email đã gửi gần nhất
+    def sync_user_emails(self):        
         try:
             result = self.gmail.get_emails(max_results=50, folder="SENT") 
             sent_emails = result.get('emails', [])
             
             if not sent_emails:
-                logging.info("⚠️ Không tìm thấy email đã gửi nào.")
+                logging.info("Không tìm thấy email đã gửi nào.")
                 return {"synced_count": 0, "skipped_count": 0, "message": "Không có email"}
 
-            # 2. Kiểm tra email nào đã được vector hóa
             existing_email_ids = self._get_existing_email_ids()
-            logging.info(f"📊 Đã có {len(existing_email_ids)} email trong database")
+            logging.info(f"Đã có {len(existing_email_ids)} email trong database")
 
-            # 3. Xử lý và lưu vào Vector Store (chỉ email mới)
+            # Xử lý và lưu vào Vector Store (chỉ email mới)
             synced_count = 0
             skipped_count = 0
             
@@ -59,7 +54,7 @@ class EmailVectorizer:
                     # Kiểm tra xem email đã tồn tại chưa
                     if email_id in existing_email_ids:
                         skipped_count += 1
-                        logging.info(f"⏭️ Bỏ qua email đã có: {email.get('subject', 'No Subject')[:30]}...")
+                        logging.info(f"Bỏ qua email đã có: {email.get('subject', 'No Subject')[:30]}...")
                         continue
                     
                     # Lấy nội dung chi tiết (HTML Body)
@@ -100,16 +95,16 @@ class EmailVectorizer:
                         try:
                             self.supabase.table("documents").insert(doc_data).execute()
                         except Exception as insert_error:
-                            logging.error(f"❌ Lỗi insert chunk {i}: {insert_error}")
+                            logging.error(f"Lỗi insert chunk {i}: {insert_error}")
                             raise
                     
                     synced_count += 1
-                    logging.info(f"✅ Đã học xong email: {detail['subject'][:30]}... (ID: {email_id})")
+                    logging.info(f"Đã học xong email: {detail['subject'][:30]}... (ID: {email_id})")
                     
                 except Exception as e:
-                    logging.error(f"❌ Lỗi xử lý email {email.get('id', 'unknown')}: {e}")
+                    logging.error(f"Lỗi xử lý email {email.get('id', 'unknown')}: {e}")
 
-            logging.info(f"🎉 Hoàn tất! Đã học {synced_count} email mới, bỏ qua {skipped_count} email đã có.")
+            logging.info(f"Hoàn tất! Đã học {synced_count} email mới, bỏ qua {skipped_count} email đã có.")
             return {
                 "synced_count": synced_count,
                 "skipped_count": skipped_count,
@@ -117,18 +112,11 @@ class EmailVectorizer:
             }
 
         except Exception as e:
-            logging.error(f"❌ Lỗi sync: {e}")
+            logging.error(f"Lỗi sync: {e}")
             return {"synced_count": 0, "skipped_count": 0, "error": str(e)}
     
     def _get_existing_email_ids(self):
-        """
-        Lấy danh sách email_id đã được vector hóa trong Supabase cho user hiện tại
-        
-        Returns:
-            set: Tập hợp các email_id đã tồn tại
-        """
         try:
-            # Query trực tiếp từ Supabase để lấy danh sách email_id
             response = self.supabase.table("documents").select("metadata").eq("metadata->>user_id", self.user_id).execute()
             
             existing_ids = set()
@@ -142,5 +130,5 @@ class EmailVectorizer:
             return existing_ids
             
         except Exception as e:
-            logging.error(f"❌ Lỗi lấy danh sách email đã có: {e}")
+            logging.error(f"Lỗi lấy danh sách email đã có: {e}")
             return set()  # Trả về set rỗng nếu lỗi (sẽ sync tất cả)

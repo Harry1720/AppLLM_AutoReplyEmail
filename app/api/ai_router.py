@@ -5,14 +5,15 @@ from app.api.user_router import get_current_user_id
 from app.infra.supabase_client import get_supabase
 import logging
 
+# Khởi tạo router
 ai_router = APIRouter()
 
-# Model dữ liệu đầu vào
+# MODELS 
 class GenerateRequest(BaseModel):
     msg_id: str # ID của email cần trả lời
 
-# --- API 1: ĐỒNG BỘ EMAIL CŨ (Để AI học) ---
-# Chạy ngầm (Background) vì tốn thời gian
+
+# ĐỒNG BỘ EMAIL CŨ CHẠY NGẦM
 @ai_router.post("/ai/sync")
 async def sync_data(
     background_tasks: BackgroundTasks,
@@ -21,23 +22,27 @@ async def sync_data(
 ):
     def run_sync_process():
         try:
-            print(f"🔄 Bắt đầu đồng bộ cho user {user_id}...")
+            print(f"Bắt đầu đồng bộ cho user {user_id}...")
+
             # Import bên trong để tránh lỗi vòng lặp
             from app.infra.ai.vectorizer import EmailVectorizer
             
             vec = EmailVectorizer(user_id, token_data)
             result = vec.sync_user_emails()
-            print(f"✅ Kết quả Sync: {result}")
+            print(f"Kết quả Sync: {result}")
         except Exception as e:
-            print(f"❌ Lỗi Sync: {e}")
-    
-    # Đẩy vào chạy ngầm
+            print(f"Lỗi Sync: {e}")
+
+    # Thêm task vào hàng đợi chạy ngầm
     background_tasks.add_task(run_sync_process)
     
-    return {"message": "Hệ thống đang đọc email cũ của bạn để học. Vui lòng đợi vài phút."}
+    return {
+        "status": "success",
+        "message": "Hệ thống đang đọc email cũ của bạn để học. Quá trình này sẽ chạy ngầm."
+    }
 
-# --- API 2: GỢI Ý TRẢ LỜI (Single Email) ---
-# Dùng Ollama chạy local có thể mất 5-10s, Frontend cần hiện Loading
+
+# GỢI Ý TRẢ LỜI  
 @ai_router.post("/ai/generate")
 async def generate_reply(
     req: GenerateRequest,
@@ -45,6 +50,7 @@ async def generate_reply(
     token_data: dict = Depends(get_token_dependency)
 ):
     try:
+        # Import workflow xử lý AI
         from app.infra.ai.reasoning import create_single_email_workflow, GraphState
         
         # Khởi tạo Workflow
@@ -61,7 +67,7 @@ async def generate_reply(
         )
         
         # Chạy quy trình
-        print(f"🤖 Đang gọi Ollama xử lý email {req.msg_id}...")
+        print(f"Đang gọi Ollama xử lý email {req.msg_id}...")
         result = app.invoke(initial_state)
         
         if result.get("error"):
@@ -72,27 +78,24 @@ async def generate_reply(
         return {
             "message": "Đã tạo bản nháp thành công", 
             "draft": draft_data,
-            "draft_id": draft_data.get("draft_id")  # Thêm draft_id vào response
+            "draft_id": draft_data.get("draft_id") 
         }
         
     except Exception as e:
-        print(f"❌ Lỗi AI Router: {e}")
+        print(f"Lỗi AI Router: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- API 3: KIỂM TRA TRẠNG THÁI SYNC ---
+# KIỂM TRA TRẠNG THÁI SYNC 
 @ai_router.get("/ai/sync-status")
 async def check_sync_status(user_id: str = Depends(get_current_user_id)):
-    """
-    Kiểm tra xem user đã có email được vector hóa chưa
-    Trả về số lượng document và trạng thái sync
-    """
     try:
         db = get_supabase()
         
         # Đếm số lượng document của user trong bảng documents
         response = db.table("documents").select("id", count="exact").eq("metadata->>user_id", user_id).execute()
-        
+       
+        # Lấy số lượng (xử lý an toàn nếu response không có count)
         doc_count = response.count if hasattr(response, 'count') else 0
         
         return {
@@ -102,7 +105,7 @@ async def check_sync_status(user_id: str = Depends(get_current_user_id)):
         }
         
     except Exception as e:
-        logging.error(f"❌ Lỗi check sync status: {e}")
+        logging.error(f"Lỗi check sync status: {e}")
         return {
             "synced": False,
             "document_count": 0,

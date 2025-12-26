@@ -1,9 +1,8 @@
-# app/api/user_router.py
 from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 import jwt
 import os
-from app.api.deps import get_token_dependency, security # Import security để lấy raw token
+from app.api.deps import get_token_dependency, security 
 from app.domain.repositories.user_repository import UserRepository
 
 user_router = APIRouter()
@@ -14,7 +13,7 @@ class UpdateProfileRequest(BaseModel):
     name: str
     picture: str = None
 
-# --- HÀM PHỤ: Lấy User ID từ Token ---
+# Lấy User ID từ Token 
 def get_current_user_id(token_auth=Depends(security)):
     token = token_auth.credentials
     try:
@@ -23,7 +22,7 @@ def get_current_user_id(token_auth=Depends(security)):
     except:
         raise HTTPException(status_code=401, detail="Token lỗi")
 
-# 1. XEM PROFILE (Read)
+# XEM PROFILE 
 @user_router.get("/users/me")
 def get_my_profile(user_id: str = Depends(get_current_user_id)):
     repo = UserRepository()
@@ -39,7 +38,7 @@ def get_my_profile(user_id: str = Depends(get_current_user_id)):
         "picture": user.picture
     }
 
-# 2. CẬP NHẬT PROFILE (Update)
+# CẬP NHẬT PROFILE 
 @user_router.put("/users/me")
 def update_my_profile(
     req: UpdateProfileRequest, 
@@ -52,7 +51,7 @@ def update_my_profile(
         return {"message": "Cập nhật thành công", "name": req.name}
     raise HTTPException(status_code=500, detail="Cập nhật thất bại")
 
-# 3. XÓA TÀI KHOẢN (Delete)
+# XÓA TÀI KHOẢN 
 @user_router.delete("/users/me")
 def delete_my_account(user_id: str = Depends(get_current_user_id)):
     repo = UserRepository()

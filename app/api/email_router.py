@@ -9,7 +9,7 @@ import logging
 
 email_router = APIRouter()
 
-# 1. API Đọc danh sách (Read)
+# 1. Đọc danh sách 
 @email_router.get("/emails")
 def list_user_emails(
     limit: int = Query(10, description="Số lượng email muốn lấy"),
@@ -20,8 +20,6 @@ def list_user_emails(
 ): 
     service = GmailService(token_data)
     
-    # Gọi service truyền các tham số lọc
-    # folder.value và status.value dùng để lấy chuỗi text thực tế (vd: "INBOX")
     return service.get_emails(
         max_results=limit, 
         page_token=page_token,
@@ -29,31 +27,25 @@ def list_user_emails(
         status=status.value
     )
 
-# 2. API Gửi mail (Create)
-# @email_router.post("/emails/send")
-# def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
-#     service = GmailService(token_data)
-#     result = service.send_email(to, subject, body)
-#     if result:
-#         return {"message": "Gửi thành công", "id": result['id']}
-#     raise HTTPException(status_code=500, detail="Gửi thất bại")
+# 2. Gửi mail 
+@email_router.post("/emails/send")
+def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
+    service = GmailService(token_data)
+    result = service.send_email(to, subject, body)
+    if result:
+        return {"message": "Gửi thành công", "id": result['id']}
+    raise HTTPException(status_code=500, detail="Gửi thất bại")
 
-# 3. API Xóa mail (Delete)
+# 3. Xóa mail 
 @email_router.delete("/emails/{msg_id}")
 def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
-    # 1. Khởi tạo Service bằng token lấy được
     service = GmailService(token_data)
-    
-    # 2. Gọi hàm xóa bên Service
     success = service.delete_email(msg_id)
-    
-    # 3. Trả kết quả về cho người dùng
     if success:
         return {"message": "Đã chuyển email vào thùng rác thành công"}
-    
     raise HTTPException(status_code=500, detail="Xóa thất bại (Vui lòng kiểm tra quyền gmail.modify)")
 
-# 4. API LẤY CHI TIẾT 1 EMAIL
+# 4. LẤY CHI TIẾT 1 EMAIL
 @email_router.get("/emails/{msg_id}")
 def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -65,7 +57,7 @@ def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependenc
     
     raise HTTPException(status_code=404, detail="Không tìm thấy email hoặc lỗi khi đọc")
 
-# 5. API Gửi mail kèm tệp đính kèm (Create with Attachments)
+# 5. Gửi mail kèm tệp đính kèm 
 @email_router.post("/emails/send")
 async def send_user_email(
     to: str = Form(..., description="Email người nhận"),
@@ -95,7 +87,7 @@ async def send_user_email(
     
     raise HTTPException(status_code=500, detail="Gửi thất bại")
 
-# 5. API LƯU TRỮ (Archive)
+# 5. LƯU TRỮ (Archive)
 @email_router.post("/emails/{msg_id}/archive")
 def archive_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -104,7 +96,7 @@ def archive_user_email(msg_id: str, token_data: dict = Depends(get_token_depende
         return {"message": "Đã lưu trữ email (Archived)"}
     raise HTTPException(status_code=500, detail="Lưu trữ thất bại")
 
-# 6. API GẮN SAO (Star)
+# 6. GẮN SAO (Star)
 @email_router.post("/emails/{msg_id}/star")
 def star_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -113,7 +105,7 @@ def star_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency
         return {"message": "Đã gắn sao thành công ⭐"}
     raise HTTPException(status_code=500, detail="Gắn sao thất bại")
 
-# 7. API BỎ SAO (Unstar)
+# 7. BỎ SAO (Unstar)
 @email_router.delete("/emails/{msg_id}/star")
 def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -122,43 +114,31 @@ def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
         return {"message": "Đã bỏ sao thành công"}
     raise HTTPException(status_code=500, detail="Bỏ sao thất bại")
 
-# --- API LẤY DANH SÁCH DRAFTS ---
+# 8. LẤY DANH SÁCH DRAFTS
 @email_router.get("/drafts")
 def list_drafts(
     user_id: str = Depends(get_current_user_id)
 ):
-    """Lấy tất cả drafts của user từ Supabase"""
     draft_repo = DraftRepository()
-    
-    # Lấy tất cả drafts từ Supabase
     drafts = draft_repo.get_all_drafts_by_user(user_id)
-    
     return {"drafts": drafts}
 
-# --- API LẤY DANH SÁCH EMAIL ĐÃ GỬI (SENT) ---
-# ⚠️ QUAN TRỌNG: Route này PHẢI ở trước /drafts/{draft_id} 
-# để FastAPI không nhầm 'sent-emails' là draft_id
+# 9.LẤY DANH SÁCH EMAIL ĐÃ GỬI 
 @email_router.get("/drafts/sent-emails")
 def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
-    """
-    Lấy danh sách email_id đã được gửi (status='sent')
-    Frontend dùng để đánh dấu email đã gửi trả lời
-    """
     draft_repo = DraftRepository()
     sent_ids = draft_repo.get_sent_email_ids(user_id)
-    
     return {
         "sent_email_ids": sent_ids,
         "count": len(sent_ids)
     }
 
-# --- API LẤY CHI TIẾT MỘT DRAFT ---
+# 10. LẤY CHI TIẾT MỘT DRAFT 
 @email_router.get("/drafts/{draft_id}")
 def get_draft_detail(
     draft_id: str,
     token_data: dict = Depends(get_token_dependency)
 ):
-    """Lấy chi tiết draft từ Supabase hoặc Gmail"""
     # Thử lấy từ Supabase trước
     draft_repo = DraftRepository()
     supabase_draft = draft_repo.get_draft_by_gmail_id(draft_id)
@@ -177,17 +157,12 @@ def get_draft_detail(
     # Nếu không có trong Supabase, thử lấy từ Gmail
     service = GmailService(token_data)
     draft_detail = service.get_draft_detail(draft_id)
-    
+
     if draft_detail:
         return {"data": draft_detail}
-    
     raise HTTPException(status_code=404, detail="Không tìm thấy bản nháp hoặc lỗi khi đọc")
 
-# app/api/email_router.py
-
-# ... (Các API cũ giữ nguyên) ...
-
-# --- API ĐÁNH DẤU ĐÃ ĐỌC ---
+# 11. ĐÁNH DẤU ĐÃ ĐỌC 
 @email_router.post("/emails/{msg_id}/read")
 def mark_email_as_read(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -196,7 +171,7 @@ def mark_email_as_read(msg_id: str, token_data: dict = Depends(get_token_depende
         return {"message": "Đã đánh dấu đã đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-# --- API ĐÁNH DẤU CHƯA ĐỌC ---
+# 12. ĐÁNH DẤU CHƯA ĐỌC ---
 @email_router.post("/emails/{msg_id}/unread")
 def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
@@ -205,12 +180,11 @@ def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_depen
         return {"message": "Đã đánh dấu chưa đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-# --- API TRẢ LỜI EMAIL ---
+# 13. TRẢ LỜI EMAIL 
 @email_router.post("/emails/{msg_id}/reply")
 async def reply_user_email(
     msg_id: str,
     body: str = Form(..., description="Nội dung trả lời"),
-    # 👇 SỬA DÒNG NÀY: Thêm Optional và File(None)
     files: Optional[List[UploadFile]] = File(None, description="File đính kèm (Tùy chọn)"), 
     token_data: dict = Depends(get_token_dependency)
 ):
@@ -219,7 +193,7 @@ async def reply_user_email(
     # Xử lý file (Thêm kiểm tra if files)
     attachment_list = []
     
-    # 👇 QUAN TRỌNG: Kiểm tra xem user có gửi file không rồi mới lặp
+    # Kiểm tra xem user có gửi file không rồi mới lặp
     if files: 
         for file in files:
             # Kiểm tra file rỗng (Swagger đôi khi gửi file rỗng nếu không chọn gì)
@@ -238,7 +212,7 @@ async def reply_user_email(
     
     raise HTTPException(status_code=500, detail="Trả lời thất bại")
 
-# --- API CẬP NHẬT BẢN NHÁP ---
+# 14. API CẬP NHẬT BẢN NHÁP 
 @email_router.put("/drafts/{draft_id}")
 def update_existing_draft(
     draft_id: str,
@@ -248,8 +222,6 @@ def update_existing_draft(
     token_data: dict = Depends(get_token_dependency)
 ):
     service = GmailService(token_data)
-    
-    # Gọi hàm update
     result = service.update_draft(draft_id, to, subject, body)
     
     if result:
@@ -257,7 +229,7 @@ def update_existing_draft(
     
     raise HTTPException(status_code=500, detail="Cập nhật thất bại")
 
-# --- API GỬI BẢN NHÁP ĐI ---
+# 14. GỬI BẢN NHÁP ĐI ---
 @email_router.post("/drafts/{draft_id}/send")
 async def send_existing_draft(
     draft_id: str,
@@ -266,10 +238,7 @@ async def send_existing_draft(
     recipient: str = Form(None, description="Email người nhận (tuỳ chọn)"),
     token_data: dict = Depends(get_token_dependency)
 ):
-    """
-    Gửi bản nháp đi. Nếu người dùng đã chỉnh sửa nội dung,
-    cần truyền subject, body, recipient để cập nhật vào Supabase và Gmail.
-    """
+   
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
@@ -282,7 +251,7 @@ async def send_existing_draft(
         final_body = body if body else current_draft.get("body", "")
         final_recipient = recipient if recipient else current_draft.get("recipient", "")
         
-        # ⭐ CHỈ UPDATE KHI NỘI DUNG THỰC SỰ KHÁC
+        # CHỈ UPDATE KHI NỘI DUNG THỰC SỰ KHÁC
         content_changed = (
             final_subject != current_draft.get("subject", "") or
             final_body != current_draft.get("body", "") or
@@ -311,32 +280,29 @@ async def send_existing_draft(
             if not gmail_update_result:
                 raise HTTPException(status_code=500, detail="Không thể cập nhật bản nháp trên Gmail")
         else:
-            logging.info(f"ℹ️ Nội dung draft {draft_id} không thay đổi, bỏ qua cập nhật")
+            logging.info(f"Nội dung draft {draft_id} không thay đổi, bỏ qua cập nhật")
     
     # Gửi draft qua Gmail
     result = service.send_draft(draft_id)
     
     if result:
-        # Update status trong Supabase thành 'sent'
         draft_repo.update_status(draft_id, "sent")
         
         return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")
 
-# --- API XÓA BẢN NHÁP ---
+# 15. XÓA BẢN NHÁP ---
 @email_router.delete("/drafts/{draft_id}")
 def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
-    # 1. Xóa draft trên Gmail
     gmail_success = service.delete_draft(draft_id)
     
     if not gmail_success:
         raise HTTPException(status_code=500, detail="Xóa bản nháp trên Gmail thất bại")
     
-    # 2. Xóa draft trong Supabase (dựa trên gmail_draft_id)
     supabase_success = draft_repo.delete_draft_by_gmail_id(draft_id)
     
     if supabase_success:
@@ -346,7 +312,6 @@ def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_depend
             "supabase_deleted": True
         }
     else:
-        # Gmail đã xóa nhưng không tìm thấy trong Supabase (có thể chưa được lưu)
         return {
             "message": "Đã xóa bản nháp trên Gmail (không tìm thấy trong Supabase)",
             "gmail_deleted": True,

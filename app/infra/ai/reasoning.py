@@ -38,8 +38,7 @@ class EmailReasoningSystem:
         # Setup AI - OLLAMA (Local)
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         
-        # 👇 CẤU HÌNH OLLAMA TẠI ĐÂY
-        # Yêu cầu: Bạn phải đang chạy 'ollama serve' và đã pull model 'llama3'
+        # CẤU HÌNH OLLAMA TẠI ĐÂY
         self.llm = OllamaLLM(
             model="llama3",
             format="json", # Bắt buộc trả về JSON
@@ -57,7 +56,7 @@ class EmailReasoningSystem:
     # --- NODE 1: LẤY NỘI DUNG EMAIL ---
     def fetch_email_node(self, state: GraphState) -> GraphState:
         msg_id = state.get("target_email_id")
-        logging.info(f"🚀 [Ollama] Bắt đầu xử lý email ID: {msg_id}")
+        logging.info(f"[Ollama] Bắt đầu xử lý email ID: {msg_id}")
         
         if not msg_id:
             return {**state, "error": "Không có ID email"}
@@ -76,7 +75,7 @@ class EmailReasoningSystem:
         email = state.get("current_email")
         if not email: return state
         
-        logging.info("🔍 Đang tìm kiếm văn phong cũ trong Supabase...")
+        logging.info("Đang tìm kiếm văn phong cũ trong Supabase...")
         query = f"{email['subject']} {email['body'][:200]}"
         
         try:
@@ -98,13 +97,13 @@ class EmailReasoningSystem:
             if response.data:
                 for doc in response.data:
                     context.append(doc.get('content', ''))
-                logging.info(f"✅ Tìm thấy {len(context)} email tham khảo từ user {self.user_id}")
+                logging.info(f"Tìm thấy {len(context)} email tham khảo từ user {self.user_id}")
             else:
-                logging.info("ℹ️ Không tìm thấy email tham khảo nào")
+                logging.info("Không tìm thấy email tham khảo nào")
             
             return {**state, "context_emails": context}
         except Exception as e:
-            logging.warning(f"⚠️ Lỗi RAG: {e}. Tiếp tục không có context.")
+            logging.warning(f"Lỗi RAG: {e}. Tiếp tục không có context.")
             return {**state, "context_emails": []}
 
    # --- NODE 3: VIẾT TRẢ LỜI (FIX LỖI NHÁI & SAI NGÔN NGỮ) ---
@@ -112,7 +111,7 @@ class EmailReasoningSystem:
         email = state.get("current_email")
         if not email: return state
         
-        logging.info("🧠 Ollama đang suy nghĩ (Chế độ đa ngôn ngữ)...")
+        logging.info("Ollama đang suy nghĩ ...")
         
         # Lấy context (nếu không có thì để trống để tránh nhiễu)
         context_str = "\n---\n".join(state["context_emails"]) if state.get("context_emails") else "Không có văn mẫu."
@@ -139,13 +138,13 @@ class EmailReasoningSystem:
 
         QUY TẮC BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
         
-        1. 🌍 TỰ ĐỘNG PHÁT HIỆN NGÔN NGỮ (QUAN TRỌNG NHẤT):
+        1. TỰ ĐỘNG PHÁT HIỆN NGÔN NGỮ (QUAN TRỌNG NHẤT):
            - Hãy đọc "Nội dung gốc".
            - Nếu người gửi viết TIẾNG ANH -> Bạn BẮT BUỘC trả lời bằng TIẾNG ANH.
            - Nếu người gửi viết TIẾNG VIỆT -> Bạn BẮT BUỘC trả lời bằng TIẾNG VIỆT.
            - (Bỏ qua ngôn ngữ của phần [VĂN PHONG CỦA TÔI], chỉ quan tâm ngôn ngữ của email mới).
 
-        2. 🚫 CHỐNG NHÁI (ANTI-PARROTING):
+        2. CHỐNG NHÁI (ANTI-PARROTING):
            - Đây là thư "REPLY" (Trả lời).
            - Tuyệt đối KHÔNG chép lại nội dung của người gửi.
            - Ví dụ: Họ hỏi "Khỏe không?", bạn trả lời "Tôi khỏe", KHÔNG ĐƯỢC viết lại "Khỏe không?".
@@ -153,15 +152,18 @@ class EmailReasoningSystem:
            - BẠN KHÔNG ĐƯỢC CHÀO LẠI "Chào bộ phận quản lý".
            - BẠN PHẢI CHÀO TÊN HỌ: "Chào {sender}," hoặc "Chào bạn {sender},".
 
-        3. 🎯 NỘI DUNG:
+        3. NỘI DUNG:
            - Đi thẳng vào câu trả lời. Ngắn gọn, súc tích.
-           -Không thêm mở bài, kết bài dài dòng.
+           - Không thêm mở bài, kết bài dài dòng.
            - Trả lời đúng trọng tâm câu hỏi.
            - Không bịa ra thông tin ngày giờ cụ thể nếu không biết (dùng [Time], [Date]...).
 
-        4. 🛡️ THÁI ĐỘ (Dựa trên nội dung):
+        4. THÁI ĐỘ (Dựa trên nội dung):
            - Nếu khách đang giận (khiếu nại) -> Hãy xin lỗi, nhún nhường, xưng "Em/Mình" hoặc "Chúng tôi".
            - Nếu là công việc -> Chuyên nghiệp.
+           - Nếu là bạn bè -> Thân mật, vui vẻ.
+           - Nếu không rõ -> Trung lập, lịch sự.
+
 
         ĐỊNH DẠNG OUTPUT (JSON ONLY):
         Chỉ trả về JSON hợp lệ. Không được có bất kỳ dòng chữ nào khác bên ngoài JSON.
@@ -203,13 +205,15 @@ class EmailReasoningSystem:
                 "subject": f"Re: {email.get('subject')}",
                 "body": "Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau."
             }}
+        
+
     # --- NODE 4: TẠO BẢN NHÁP (ĐÃ SỬA ĐỂ GẮN VÀO THREAD) ---
     def create_draft_node(self, state: GraphState) -> GraphState:
         draft = state.get("draft_reply")
         email = state.get("current_email")
         
         if draft and email:
-            logging.info("📝 Đang tạo Draft Reply trong Thread...")
+            logging.info("Đang tạo Draft Reply trong Thread...")
             try:
                 # 1. Lấy thông tin email gốc chi tiết hơn để có Message-ID
                 original_msg = self.gmail.users().messages().get(
@@ -232,7 +236,7 @@ class EmailReasoningSystem:
                 message['to'] = recipient
                 message['subject'] = draft['subject']
                 
-                # ⭐ QUAN TRỌNG: Gắn Thread References để Gmail hiểu đây là Reply
+                # QUAN TRỌNG: Gắn Thread References để Gmail hiểu đây là Reply
                 msg_id_header = headers.get('Message-ID')
                 if msg_id_header:
                     message['In-Reply-To'] = msg_id_header
@@ -255,7 +259,7 @@ class EmailReasoningSystem:
                 ).execute()
                 
                 draft_id = draft_result['id']
-                logging.info(f"✅ Đã tạo Draft Reply trong Thread! Draft ID: {draft_id}")
+                logging.info(f"Đã tạo Draft Reply trong Thread! Draft ID: {draft_id}")
                 
                 # 6. LƯU DRAFT VÀO SUPABASE
                 try:
@@ -265,29 +269,29 @@ class EmailReasoningSystem:
                     
                     # Lưu vào bảng email_drafts với schema đầy đủ
                     supabase_draft = self.draft_repo.create_draft(
-                        user_id=self.user_id,      # ⭐ Truyền user_id (NOT NULL constraint)
-                        email_id=email['id'],      # ⭐ Truyền email_id gốc (NOT NULL constraint)
-                        thread_id=thread_id,       # ⭐ Truyền thread_id (NOT NULL constraint)
-                        draft_id=draft_id,         # Gmail Draft ID
+                        user_id=self.user_id,     
+                        email_id=email['id'],     
+                        thread_id=thread_id,       
+                        draft_id=draft_id,        
                         subject=draft.get("subject", ""),
                         body=draft.get("body", ""),
                         recipient=recipient_email
                     )
                     
                     if supabase_draft:
-                        logging.info(f"✅ Draft đã được lưu vào Supabase với ID: {supabase_draft.get('id')}")
+                        logging.info(f"Draft đã được lưu vào Supabase với ID: {supabase_draft.get('id')}")
                     else:
-                        logging.warning("⚠️ Không thể lưu draft vào Supabase (không chặn workflow)")
+                        logging.warning("Không thể lưu draft vào Supabase (không chặn workflow)")
                         
                 except Exception as e:
-                    logging.error(f"❌ Lỗi lưu draft vào Supabase: {e} (tiếp tục workflow)")
+                    logging.error(f"Lỗi lưu draft vào Supabase: {e} (tiếp tục workflow)")
                 
-                # ⭐ CẬP NHẬT: Trả về draft_id trong state
+                # CẬP NHẬT: Trả về draft_id trong state
                 updated_draft = {**draft, "draft_id": draft_id}
                 return {**state, "draft_reply": updated_draft}
                 
             except Exception as e:
-                logging.error(f"❌ Lỗi tạo draft reply: {e}")
+                logging.error(f"Lỗi tạo draft reply: {e}")
                 return {**state, "error": str(e)}
         
         return state

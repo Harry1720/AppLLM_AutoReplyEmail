@@ -1,4 +1,3 @@
-# app/use_case/login_with_google.py
 import os
 import jwt
 import datetime
@@ -6,10 +5,8 @@ from fastapi import HTTPException
 from google_auth_oauthlib.flow import Flow 
 from app.domain.repositories.user_repository import UserRepository
 
-# --- DÒNG SỬA LỖI QUAN TRỌNG ---
-# Cho phép Google tự động thêm scope openid mà không báo lỗi
+
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
-# -------------------------------
 
 class LoginWithGoogleUseCase:
 
@@ -28,7 +25,7 @@ class LoginWithGoogleUseCase:
     def execute(self, auth_code: str, background_tasks=None):
         try:
             # 1. Thiết lập Flow
-            # redirect_uri phải khớp 100% với link bạn dùng trên trình duyệt
+            # redirect_uri 
             flow = Flow.from_client_config(
                 self.client_config,
                 scopes=[
@@ -57,21 +54,14 @@ class LoginWithGoogleUseCase:
             refresh_token = credentials.refresh_token
 
         except Exception as e:
-            # In lỗi ra terminal để debug nếu có biến
-            print("="*30)
-            print(f"❌ LỖI GOOGLE TRẢ VỀ: {e}") 
-            print("="*30)
             raise HTTPException(status_code=401, detail=f"Xác thực thất bại: {str(e)}")
 
         # 4. LƯU VÀO DB (Supabase)
-        # Logic: Tìm user -> Nếu chưa có thì tạo -> Nếu có rồi thì update token
         user = self.repo.get_by_email(email)
         
         if not user:
-            # Tạo user mới
             user = self.repo.create(email, name, picture, refresh_token)
         else:
-            # User cũ -> Cập nhật token mới (nếu Google có trả về refresh_token)
             if refresh_token:
                 self.repo.update_google_token(user.id, refresh_token)
 
@@ -109,18 +99,18 @@ class LoginWithGoogleUseCase:
                 
                 def run_sync_after_login():
                     try:
-                        print(f"🔄 Tự động sync email sau đăng nhập cho user {user.id}...")
+                        print(f"Tự động sync email sau đăng nhập cho user {user.id}...")
                         from app.infra.ai.vectorizer import EmailVectorizer
                         vec = EmailVectorizer(user.id, token_data)
                         result = vec.sync_user_emails()
-                        print(f"✅ Kết quả auto-sync: {result}")
+                        print(f"Kết quả auto-sync: {result}")
                     except Exception as e:
-                        print(f"❌ Lỗi auto-sync sau login: {e}")
+                        print(f"Lỗi auto-sync sau login: {e}")
                 
                 background_tasks.add_task(run_sync_after_login)
-                print(f"📧 Đã thêm task tự động sync email cho user {user.id}")
+                print(f"Đã thêm task tự động sync email cho user {user.id}")
             else:
-                print(f"⚠️ Không tìm thấy refresh_token cho user {user.id}, bỏ qua auto-sync")
+                print(f"Không tìm thấy refresh_token cho user {user.id}, bỏ qua auto-sync")
 
         return {
             "access_token": token,
