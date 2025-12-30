@@ -28,13 +28,13 @@ def list_user_emails(
     )
 
 # 2. Gửi mail 
-@email_router.post("/emails/send")
-def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
-    service = GmailService(token_data)
-    result = service.send_email(to, subject, body)
-    if result:
-        return {"message": "Gửi thành công", "id": result['id']}
-    raise HTTPException(status_code=500, detail="Gửi thất bại")
+# @email_router.post("/emails/send")
+# def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
+#     service = GmailService(token_data)
+#     result = service.send_email(to, subject, body)
+#     if result:
+#         return {"message": "Gửi thành công", "id": result['id']}
+#     raise HTTPException(status_code=500, detail="Gửi thất bại")
 
 # 3. Xóa mail 
 @email_router.delete("/emails/{msg_id}")
