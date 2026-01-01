@@ -67,7 +67,7 @@ async def generate_reply(
         )
         
         # Chạy quy trình
-        print(f"Đang gọi Ollama xử lý email {req.msg_id}...")
+        print(f"Đang gọi Groq xử lý email {req.msg_id}...")
         result = app.invoke(initial_state)
         
         if result.get("error"):

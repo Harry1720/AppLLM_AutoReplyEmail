@@ -15,12 +15,15 @@ class GmailService:
         self.service = build('gmail', 'v1', credentials=self.creds)
 
 
-    # HÀM LẤY CHI TIẾT 
+    # HÀM LẤY CHI TIẾT - OPTIMIZED
     def get_email_detail(self, msg_id):
         try:
-            # format='full' để lấy toàn bộ nội dung
+            # format='full' để lấy toàn bộ nội dung, nhưng chỉ lấy fields cần thiết
             msg = self.service.users().messages().get(
-                userId='me', id=msg_id, format='full'
+                userId='me', 
+                id=msg_id, 
+                format='full',
+                fields='id,snippet,payload(headers,parts,body,mimeType)'
             ).execute()
 
             # Lấy Headers - case-insensitive
@@ -115,7 +118,7 @@ class GmailService:
         
         return attachments
 
- # Đọc danh sách Email 
+ # Đọc danh sách Email - OPTIMIZED WITH BATCH REQUESTS
     def get_emails(self, max_results=10, page_token=None, folder="INBOX", status="ALL"):
         try:
             print(f"Lọc Email: Folder={folder}, Status={status}")
@@ -142,43 +145,63 @@ class GmailService:
             
             final_query = " ".join(query_parts)
 
-            # Gọi API
+            # Gọi API với fields để chỉ lấy dữ liệu cần thiết
             results = self.service.users().messages().list(
                 userId='me', 
                 maxResults=max_results,
                 labelIds=label_ids if label_ids else None, 
                 q=final_query,
-                pageToken=page_token
+                pageToken=page_token,
+                fields="messages(id),nextPageToken"  # Chỉ lấy ID
             ).execute()
             
             messages = results.get('messages', [])
             next_token = results.get('nextPageToken')
             
+            if not messages:
+                return {"emails": [], "next_page_token": next_token}
+            
+            # Sử dụng BATCH REQUEST để lấy metadata của nhiều email cùng lúc
             email_list = []
-            if messages:
-                for msg in messages:
+            
+            def batch_callback(request_id, response, exception):
+                if exception:
+                    print(f"Lỗi đọc email {request_id}: {exception}")
+                else:
                     try:
-                        msg_detail = self.service.users().messages().get(
-                            userId='me', id=msg['id'], format='metadata'
-                        ).execute()
-                        
-                        headers_list = msg_detail['payload']['headers']
+                        headers_list = response['payload']['headers']
                         headers_lower = {h['name'].lower(): h['value'] for h in headers_list}
                         
                         def get_header(name):
                             return headers_lower.get(name.lower(), '')
                         
                         email_list.append({
-                            "id": msg['id'],
-                            "snippet": msg_detail.get('snippet'),
+                            "id": response['id'],
+                            "snippet": response.get('snippet'),
                             "subject": get_header('Subject') or '(No Subject)',
                             "from": get_header('From'),
                             "to": get_header('To'),
                             "date": get_header('Date'),
-                            "labelIds": msg_detail.get('labelIds', [])
+                            "labelIds": response.get('labelIds', [])
                         })
-                    except Exception:
-                        continue 
+                    except Exception as e:
+                        print(f"Lỗi parse email: {e}")
+
+            # Tạo batch request
+            batch = self.service.new_batch_http_request(callback=batch_callback)
+            
+            for msg in messages:
+                batch.add(
+                    self.service.users().messages().get(
+                        userId='me', 
+                        id=msg['id'], 
+                        format='metadata',
+                        metadataHeaders=['From', 'To', 'Subject', 'Date']  # Chỉ lấy headers cần thiết
+                    )
+                )
+            
+            # Thực thi batch (1 request duy nhất thay vì N requests)
+            batch.execute()
 
             return {
                 "emails": email_list,
