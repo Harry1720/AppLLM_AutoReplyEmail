@@ -1,7 +1,13 @@
 from app.infra.supabase_client import get_supabase
 import logging
+from datetime import datetime, timedelta, timezone
 
 logging.basicConfig(level=logging.INFO)
+
+# Helper function để lấy giờ Việt Nam
+def get_vietnam_time():
+    """Trả về thời gian hiện tại theo múi giờ Việt Nam (UTC+7)"""
+    return datetime.now(timezone.utc) + timedelta(hours=7)
 
 class DraftRepository:
     """Repository để quản lý bảng email_drafts trong Supabase
@@ -37,7 +43,8 @@ class DraftRepository:
                 "subject": subject,
                 "body": body,
                 "recipient": recipient,
-                "status": "draft"  # Trạng thái mặc định
+                "status": "draft",  # Trạng thái mặc định
+                "created_at": get_vietnam_time().isoformat()  # Set giờ Việt Nam
             }
             
             res = self.db.table("email_drafts").insert(draft_data).execute()

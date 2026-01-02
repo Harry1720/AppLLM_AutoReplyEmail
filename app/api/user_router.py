@@ -24,7 +24,7 @@ def get_current_user_id(token_auth=Depends(security)):
 
 # XEM PROFILE 
 @user_router.get("/users/me")
-def get_my_profile(user_id: str = Depends(get_current_user_id)):
+async def get_my_profile(user_id: str = Depends(get_current_user_id)):
     repo = UserRepository()
     user = repo.get_by_id(user_id)
     if not user:

@@ -11,7 +11,7 @@ email_router = APIRouter()
 
 # 1. Đọc danh sách 
 @email_router.get("/emails")
-def list_user_emails(
+async def list_user_emails(
     limit: int = Query(10, description="Số lượng email muốn lấy"),
     page_token: Optional[str] = Query(None, description="Mã token của trang tiếp theo"),
     folder: EmailFolder = Query(EmailFolder.INBOX, description="Chọn thư mục (INBOX, SENT, ARCHIVE...)"),
@@ -38,7 +38,7 @@ def list_user_emails(
 
 # 3. Xóa mail 
 @email_router.delete("/emails/{msg_id}")
-def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+async def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
     success = service.delete_email(msg_id)
     if success:
@@ -47,7 +47,7 @@ def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
 
 # 4. LẤY CHI TIẾT 1 EMAIL
 @email_router.get("/emails/{msg_id}")
-def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependency)):
+async def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
     
     email_detail = service.get_email_detail(msg_id)
@@ -116,7 +116,7 @@ def unstar_user_email(msg_id: str, token_data: dict = Depends(get_token_dependen
 
 # 8. LẤY DANH SÁCH DRAFTS
 @email_router.get("/drafts")
-def list_drafts(
+async def list_drafts(
     user_id: str = Depends(get_current_user_id)
 ):
     draft_repo = DraftRepository()
@@ -125,7 +125,7 @@ def list_drafts(
 
 # 9.LẤY DANH SÁCH EMAIL ĐÃ GỬI 
 @email_router.get("/drafts/sent-emails")
-def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
+async def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
     draft_repo = DraftRepository()
     sent_ids = draft_repo.get_sent_email_ids(user_id)
     return {
@@ -135,7 +135,7 @@ def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
 
 # 10. LẤY CHI TIẾT MỘT DRAFT 
 @email_router.get("/drafts/{draft_id}")
-def get_draft_detail(
+async def get_draft_detail(
     draft_id: str,
     token_data: dict = Depends(get_token_dependency)
 ):
@@ -294,7 +294,7 @@ async def send_existing_draft(
 
 # 15. XÓA BẢN NHÁP ---
 @email_router.delete("/drafts/{draft_id}")
-def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
+async def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
@@ -305,15 +305,12 @@ def delete_user_draft(draft_id: str, token_data: dict = Depends(get_token_depend
     
     supabase_success = draft_repo.delete_draft_by_gmail_id(draft_id)
     
-    if supabase_success:
+    # Success if deleted from at least one place
+    if gmail_success or supabase_success:
         return {
-            "message": "Đã xóa bản nháp thành công (cả Gmail và Supabase)",
-            "gmail_deleted": True,
-            "supabase_deleted": True
+            "message": f"Đã xóa bản nháp thành công",
+            "gmail_deleted": gmail_success,
+            "supabase_deleted": supabase_success
         }
-    else:
-        return {
-            "message": "Đã xóa bản nháp trên Gmail (không tìm thấy trong Supabase)",
-            "gmail_deleted": True,
-            "supabase_deleted": False
-        }
+    
+    raise HTTPException(status_code=404, detail="Không tìm thấy bản nháp ở cả Gmail và Supabase")

@@ -8,6 +8,8 @@ from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
 from email.utils import parseaddr
 from email import encoders
+import time
+import random
 
 class GmailService:
     def __init__(self, token_info: dict):
@@ -163,10 +165,15 @@ class GmailService:
             
             # Sử dụng BATCH REQUEST để lấy metadata của nhiều email cùng lúc
             email_list = []
+            failed_requests = []  # Track failed requests for retry
             
             def batch_callback(request_id, response, exception):
                 if exception:
-                    print(f"Lỗi đọc email {request_id}: {exception}")
+                    # Check if it's a rate limit error
+                    if hasattr(exception, 'resp') and exception.resp.status == 429:
+                        failed_requests.append(request_id)
+                    else:
+                        print(f"Lỗi đọc email {request_id}: {exception}")
                 else:
                     try:
                         headers_list = response['payload']['headers']
@@ -187,21 +194,30 @@ class GmailService:
                     except Exception as e:
                         print(f"Lỗi parse email: {e}")
 
-            # Tạo batch request
-            batch = self.service.new_batch_http_request(callback=batch_callback)
-            
-            for msg in messages:
-                batch.add(
-                    self.service.users().messages().get(
-                        userId='me', 
-                        id=msg['id'], 
-                        format='metadata',
-                        metadataHeaders=['From', 'To', 'Subject', 'Date']  # Chỉ lấy headers cần thiết
+            # Tạo batch request - Google recommends max 100 per batch
+            # Chia nhỏ để tránh rate limit
+            batch_size = 50  # Giảm từ 100 xuống 50 để tránh rate limit
+            for i in range(0, len(messages), batch_size):
+                batch_messages = messages[i:i + batch_size]
+                batch = self.service.new_batch_http_request(callback=batch_callback)
+                
+                for idx, msg in enumerate(batch_messages):
+                    batch.add(
+                        self.service.users().messages().get(
+                            userId='me', 
+                            id=msg['id'], 
+                            format='metadata',
+                            metadataHeaders=['From', 'To', 'Subject', 'Date']  # Chỉ lấy headers cần thiết
+                        ),
+                        request_id=str(i * batch_size + idx)
                     )
-                )
-            
-            # Thực thi batch (1 request duy nhất thay vì N requests)
-            batch.execute()
+                
+                # Thực thi batch
+                batch.execute()
+                
+                # Thêm delay nhỏ giữa các batch để tránh rate limit
+                if i + batch_size < len(messages):
+                    time.sleep(0.1)  # 100ms delay between batches
 
             return {
                 "emails": email_list,
