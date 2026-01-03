@@ -119,7 +119,6 @@ class EmailVectorizer:
                     
                     # Batch insert vào Supabase
                     logging.info(f"Đang lưu {len(all_chunks)} chunks vào database...")
-                    vietnam_time = datetime.now(timezone.utc) + timedelta(hours=7)
                     batch_data = []
                     for i, (chunk, metadata, embedding) in enumerate(zip(all_chunks, all_metadatas, all_embeddings)):
                         batch_data.append({
@@ -127,8 +126,7 @@ class EmailVectorizer:
                             "content": chunk,
                             "metadata": metadata,
                             "embedding": embedding,
-                            "user_id": self.user_id,
-                            "created_at": vietnam_time.isoformat()  # Set giờ Việt Nam
+                            "user_id": self.user_id
                         })
                     
                     # Insert theo batch 10 records để tránh timeout
