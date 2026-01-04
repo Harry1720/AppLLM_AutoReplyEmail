@@ -12,7 +12,7 @@ import base64
 from email.mime.text import MIMEText
 from app.infra.services.gmail_service import GmailService
 from app.domain.repositories.draft_repository import DraftRepository
-from app.domain.entities import DraftEntity
+from app.domain.entities.draft_entity import DraftEntity
 
 logging.basicConfig(level=logging.INFO)
 

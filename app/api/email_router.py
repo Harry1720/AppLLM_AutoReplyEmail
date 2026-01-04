@@ -5,6 +5,7 @@ from app.api.deps import get_token_dependency
 from app.api.user_router import get_current_user_id
 from app.core.enums import EmailFolder, EmailStatus
 from app.domain.repositories.draft_repository import DraftRepository
+from app.domain.entities.draft_entity import DraftEntity # <--- Import Entity
 import logging
 
 email_router = APIRouter()
@@ -19,14 +20,12 @@ async def list_user_emails(
     token_data: dict = Depends(get_token_dependency)
 ): 
     service = GmailService(token_data)
-    
     return service.get_emails(
         max_results=limit, 
         page_token=page_token,
         folder=folder.value,
         status=status.value
     )
-
 
 # 3. Xóa mail 
 @email_router.delete("/emails/{msg_id}")
@@ -41,12 +40,9 @@ async def delete_user_email(msg_id: str, token_data: dict = Depends(get_token_de
 @email_router.get("/emails/{msg_id}")
 async def get_email_detail(msg_id: str, token_data: dict = Depends(get_token_dependency)):
     service = GmailService(token_data)
-    
     email_detail = service.get_email_detail(msg_id)
-    
     if email_detail:
         return {"data": email_detail}
-    
     raise HTTPException(status_code=404, detail="Không tìm thấy email hoặc lỗi khi đọc")
 
 # 5. Gửi mail kèm tệp đính kèm 
@@ -112,6 +108,7 @@ async def list_drafts(
     user_id: str = Depends(get_current_user_id)
 ):
     draft_repo = DraftRepository()
+    # Repository trả về List[DraftEntity], FastAPI tự động serialize thành JSON
     drafts = draft_repo.get_all_drafts_by_user(user_id)
     return {"drafts": drafts}
 
@@ -125,7 +122,7 @@ async def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
         "count": len(sent_ids)
     }
 
-# 10. LẤY CHI TIẾT MỘT DRAFT 
+# 10. LẤY CHI TIẾT MỘT DRAFT (Đã sửa truy cập Entity)
 @email_router.get("/drafts/{draft_id}")
 async def get_draft_detail(
     draft_id: str,
@@ -136,13 +133,13 @@ async def get_draft_detail(
     supabase_draft = draft_repo.get_draft_by_gmail_id(draft_id)
     
     if supabase_draft:
-        # Trả về draft từ Supabase với format giống Gmail
+        # === ĐÃ SỬA: Truy cập bằng dấu chấm (Entity Attribute) ===
         return {
             "data": {
-                "id": supabase_draft.get("draft_id"),
-                "subject": supabase_draft.get("subject"),
-                "to": supabase_draft.get("recipient"),
-                "body": supabase_draft.get("body"),
+                "id": supabase_draft.draft_id,       # Không dùng .get()
+                "subject": supabase_draft.subject,
+                "to": supabase_draft.recipient,
+                "body": supabase_draft.body,
             }
         }
     
@@ -172,38 +169,6 @@ def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_depen
         return {"message": "Đã đánh dấu chưa đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-# # 13. TRẢ LỜI EMAIL 
-# @email_router.post("/emails/{msg_id}/reply")
-# async def reply_user_email(
-#     msg_id: str,
-#     body: str = Form(..., description="Nội dung trả lời"),
-#     files: Optional[List[UploadFile]] = File(None, description="File đính kèm (Tùy chọn)"), 
-#     token_data: dict = Depends(get_token_dependency)
-# ):
-#     service = GmailService(token_data)
-    
-#     # Xử lý file (Thêm kiểm tra if files)
-#     attachment_list = []
-    
-#     # Kiểm tra xem user có gửi file không rồi mới lặp
-#     if files: 
-#         for file in files:
-#             # Kiểm tra file rỗng (Swagger đôi khi gửi file rỗng nếu không chọn gì)
-#             if file.filename: 
-#                 content = await file.read()
-#                 attachment_list.append({
-#                     "filename": file.filename,
-#                     "content": content,
-#                     "content_type": file.content_type
-#                 })
-
-#     result = service.reply_email(msg_id, body, attachments=attachment_list)
-    
-#     if result:
-#         return {"message": "Đã gửi câu trả lời thành công", "id": result['id']}
-    
-#     raise HTTPException(status_code=500, detail="Trả lời thất bại")
-
 # 14. API CẬP NHẬT BẢN NHÁP 
 @email_router.put("/drafts/{draft_id}")
 def update_existing_draft(
@@ -221,7 +186,7 @@ def update_existing_draft(
     
     raise HTTPException(status_code=500, detail="Cập nhật thất bại")
 
-# 14. GỬI BẢN NHÁP ĐI ---
+# 14. GỬI BẢN NHÁP ĐI 
 @email_router.post("/drafts/{draft_id}/send")
 async def send_existing_draft(
     draft_id: str,
@@ -234,24 +199,28 @@ async def send_existing_draft(
     service = GmailService(token_data)
     draft_repo = DraftRepository()
     
-    # Lấy draft hiện tại từ Supabase để so sánh
+    # Lấy draft hiện tại từ Supabase (Trả về Entity)
     current_draft = draft_repo.get_draft_by_gmail_id(draft_id)
     
     if current_draft:
-        # Xác định giá trị cuối cùng (ưu tiên giá trị mới nếu có)
-        final_subject = subject if subject else current_draft.get("subject", "")
-        final_body = body if body else current_draft.get("body", "")
-        final_recipient = recipient if recipient else current_draft.get("recipient", "")
+        # === ĐÃ SỬA: Truy cập thuộc tính Object ===
+        # Sử dụng 'or ""' để xử lý trường hợp None
+        db_subject = current_draft.subject or ""
+        db_body = current_draft.body or ""
+        db_recipient = current_draft.recipient or ""
+
+        final_subject = subject if subject else db_subject
+        final_body = body if body else db_body
+        final_recipient = recipient if recipient else db_recipient
         
         # CHỈ UPDATE KHI NỘI DUNG THỰC SỰ KHÁC
         content_changed = (
-            final_subject != current_draft.get("subject", "") or
-            final_body != current_draft.get("body", "") or
-            final_recipient != current_draft.get("recipient", "")
+            final_subject != db_subject or
+            final_body != db_body or
+            final_recipient != db_recipient
         )
         
         if content_changed:
-            logging.info(f"📝 Phát hiện nội dung draft {draft_id} đã được chỉnh sửa, đang cập nhật...")
             
             # 1. Cập nhật nội dung trong Supabase
             draft_repo.update_draft_content(
@@ -279,7 +248,6 @@ async def send_existing_draft(
     
     if result:
         draft_repo.update_status(draft_id, "sent")
-        
         return {"message": "Bản nháp đã được gửi đi thành công", "id": result['id']}
     
     raise HTTPException(status_code=500, detail="Không gửi được bản nháp (Kiểm tra lại ID)")

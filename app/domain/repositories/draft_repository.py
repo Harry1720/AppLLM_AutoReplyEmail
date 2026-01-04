@@ -2,9 +2,7 @@ from app.infra.supabase_client import get_supabase
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-
-# Import Entity vừa tạo ở trên (giả sử bạn để chung file hoặc import vào)
-from app.domain.entities import DraftEntity 
+from app.domain.entities.draft_entity import DraftEntity
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,20 +16,20 @@ class DraftRepository:
         self.db = get_supabase()
         self.table_name = "email_drafts"
     
+    # Bây giờ Python đã hiểu DraftEntity là một Class
     def create_draft(self, draft: DraftEntity) -> Optional[DraftEntity]:
    
         try:
             # Chuẩn bị dữ liệu
-            draft_data = draft.model_dump(exclude={"id"}) # Loại bỏ ID tự tăng
+            draft_data = draft.model_dump(exclude={"id"}) 
             if not draft_data.get("created_at"):
                 draft_data["created_at"] = get_vietnam_time().isoformat()
             
-            # Insert vào DB
             res = self.db.table(self.table_name).insert(draft_data).execute()
             
             if res.data and len(res.data) > 0:
-                created_draft = DraftEntity(**res.data[0]) # Convert dict từ DB -> Entity
-                logging.info(f"Draft đã lưu. ID: {created_draft.id}, Gmail Draft ID: {created_draft.draft_id}")
+                created_draft = DraftEntity(**res.data[0]) 
+                logging.info(f"Draft đã lưu. ID: {created_draft.id}")
                 return created_draft
             return None
             
@@ -44,7 +42,7 @@ class DraftRepository:
             res = self.db.table(self.table_name).select("*").eq("draft_id", gmail_draft_id).execute()
             
             if res.data and len(res.data) > 0:
-                return DraftEntity(**res.data[0]) # Return Entity
+                return DraftEntity(**res.data[0]) 
             return None
             
         except Exception as e:
@@ -56,10 +54,8 @@ class DraftRepository:
             delete_res = self.db.table(self.table_name).delete().eq("draft_id", gmail_draft_id).execute()
             
             if delete_res.data and len(delete_res.data) > 0:
-                logging.info(f"Đã xóa draft: {gmail_draft_id}")
                 return True
             else:
-                logging.warning(f"Không tìm thấy draft để xóa: {gmail_draft_id}")
                 return False
             
         except Exception as e:
@@ -84,9 +80,7 @@ class DraftRepository:
             res = query.execute()
             
             if res.data:
-                # Convert list dict -> list Entity
                 drafts = [DraftEntity(**item) for item in res.data]
-                logging.info(f"Tìm thấy {len(drafts)} drafts cho user {user_id}")
                 return drafts
             return []
             
@@ -99,12 +93,7 @@ class DraftRepository:
             update_res = self.db.table(self.table_name).update({
                 "status": new_status
             }).eq("draft_id", gmail_draft_id).execute()
-            
-            if update_res.data:
-                logging.info(f"Đã update status draft {gmail_draft_id} -> {new_status}")
-                return True
-            return False
-            
+            return bool(update_res.data)
         except Exception as e:
             logging.error(f"Lỗi update status: {e}")
             return False
@@ -116,22 +105,15 @@ class DraftRepository:
                 "body": body,
                 "recipient": recipient
             }).eq("draft_id", gmail_draft_id).execute()
-            
-            if update_res.data:
-                logging.info(f"Đã cập nhật nội dung draft {gmail_draft_id}")
-                return True
-            return False
-            
+            return bool(update_res.data)
         except Exception as e:
             logging.error(f"Lỗi cập nhật nội dung: {e}")
             return False
             
     def get_sent_email_ids(self, user_id: str) -> List[str]:
-        # Hàm này trả về list string (email_id) nên không cần trả về Entity
         try:
             res = self.db.table(self.table_name).select("email_id")\
                 .eq("user_id", user_id).eq("status", "sent").execute()
-            
             if res.data:
                 return [item["email_id"] for item in res.data]
             return []
