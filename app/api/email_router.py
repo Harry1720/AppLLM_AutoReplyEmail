@@ -27,14 +27,14 @@ def list_user_emails(
         status=status.value
     )
 
-# 2. Gửi mail 
-@email_router.post("/emails/send")
-def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
-    service = GmailService(token_data)
-    result = service.send_email(to, subject, body)
-    if result:
-        return {"message": "Gửi thành công", "id": result['id']}
-    raise HTTPException(status_code=500, detail="Gửi thất bại")
+# # 2. Gửi mail 
+# @email_router.post("/emails/send")
+# def send_user_email(to: str, subject: str, body: str, token_data: dict = Depends(get_token_dependency)):
+#     service = GmailService(token_data)
+#     result = service.send_email(to, subject, body)
+#     if result:
+#         return {"message": "Gửi thành công", "id": result['id']}
+#     raise HTTPException(status_code=500, detail="Gửi thất bại")
 
 # 3. Xóa mail 
 @email_router.delete("/emails/{msg_id}")
@@ -180,37 +180,37 @@ def mark_email_as_unread(msg_id: str, token_data: dict = Depends(get_token_depen
         return {"message": "Đã đánh dấu chưa đọc"}
     raise HTTPException(status_code=500, detail="Thất bại")
 
-# 13. TRẢ LỜI EMAIL 
-@email_router.post("/emails/{msg_id}/reply")
-async def reply_user_email(
-    msg_id: str,
-    body: str = Form(..., description="Nội dung trả lời"),
-    files: Optional[List[UploadFile]] = File(None, description="File đính kèm (Tùy chọn)"), 
-    token_data: dict = Depends(get_token_dependency)
-):
-    service = GmailService(token_data)
+# # 13. TRẢ LỜI EMAIL 
+# @email_router.post("/emails/{msg_id}/reply")
+# async def reply_user_email(
+#     msg_id: str,
+#     body: str = Form(..., description="Nội dung trả lời"),
+#     files: Optional[List[UploadFile]] = File(None, description="File đính kèm (Tùy chọn)"), 
+#     token_data: dict = Depends(get_token_dependency)
+# ):
+#     service = GmailService(token_data)
     
-    # Xử lý file (Thêm kiểm tra if files)
-    attachment_list = []
+#     # Xử lý file (Thêm kiểm tra if files)
+#     attachment_list = []
     
-    # Kiểm tra xem user có gửi file không rồi mới lặp
-    if files: 
-        for file in files:
-            # Kiểm tra file rỗng (Swagger đôi khi gửi file rỗng nếu không chọn gì)
-            if file.filename: 
-                content = await file.read()
-                attachment_list.append({
-                    "filename": file.filename,
-                    "content": content,
-                    "content_type": file.content_type
-                })
+#     # Kiểm tra xem user có gửi file không rồi mới lặp
+#     if files: 
+#         for file in files:
+#             # Kiểm tra file rỗng (Swagger đôi khi gửi file rỗng nếu không chọn gì)
+#             if file.filename: 
+#                 content = await file.read()
+#                 attachment_list.append({
+#                     "filename": file.filename,
+#                     "content": content,
+#                     "content_type": file.content_type
+#                 })
 
-    result = service.reply_email(msg_id, body, attachments=attachment_list)
+#     result = service.reply_email(msg_id, body, attachments=attachment_list)
     
-    if result:
-        return {"message": "Đã gửi câu trả lời thành công", "id": result['id']}
+#     if result:
+#         return {"message": "Đã gửi câu trả lời thành công", "id": result['id']}
     
-    raise HTTPException(status_code=500, detail="Trả lời thất bại")
+#     raise HTTPException(status_code=500, detail="Trả lời thất bại")
 
 # 14. API CẬP NHẬT BẢN NHÁP 
 @email_router.put("/drafts/{draft_id}")

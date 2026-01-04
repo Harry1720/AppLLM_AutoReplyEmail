@@ -5,7 +5,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase.client import create_client
-from app.infra.services.gmail_service import GmailService # Import Service dự án
+from app.infra.services.gmail_service import GmailService 
 
 logging.basicConfig(level=logging.INFO)
 

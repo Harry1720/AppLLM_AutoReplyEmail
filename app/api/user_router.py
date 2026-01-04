@@ -18,7 +18,7 @@ def get_current_user_id(token_auth=Depends(security)):
     token = token_auth.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        return payload.get("user_id") # Trong login_with_google mình đã lưu user_id vào payload rồi
+        return payload.get("user_id") 
     except:
         raise HTTPException(status_code=401, detail="Token lỗi")
 

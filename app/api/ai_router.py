@@ -22,8 +22,7 @@ async def sync_data(
 ):
     def run_sync_process():
         try:
-            print(f"Bắt đầu đồng bộ cho user {user_id}...")
-
+            
             # Import bên trong để tránh lỗi vòng lặp
             from app.infra.ai.vectorizer import EmailVectorizer
             

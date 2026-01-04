@@ -5,7 +5,7 @@ class UserRepository:
     def __init__(self):
         self.db = get_supabase()
 
-    # LẤY USER THEO EMAIL (Dùng khi Login)
+    # LẤY USER THEO EMAIL 
     def get_by_email(self, email: str):
         try:
             res = self.db.table("users").select("*").eq("email", email).execute()

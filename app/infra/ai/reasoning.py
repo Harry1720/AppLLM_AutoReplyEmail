@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, END
 from typing import List, TypedDict, Optional
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_ollama import OllamaLLM # <--- Dùng thư viện Ollama
+from langchain_ollama import OllamaLLM 
 from langchain_core.prompts import PromptTemplate
 from supabase.client import create_client
 import os

@@ -422,87 +422,87 @@ class GmailService:
             return False
             
 
-    def reply_email(self, original_msg_id, body_content, attachments=None):
-        try:
-            print(f"Đang chuẩn bị Reply email: {original_msg_id}")
+    # def reply_email(self, original_msg_id, body_content, attachments=None):
+    #     try:
+    #         print(f"Đang chuẩn bị Reply email: {original_msg_id}")
 
-            # 1. Lấy thông tin email gốc
-            try:
-                original_msg = self.service.users().messages().get(
-                    userId='me', id=original_msg_id, format='metadata'
-                ).execute()
-            except Exception as e:
-                print(f"Lỗi bước 1 (Lấy email gốc): ID có thể sai. {e}")
-                raise ValueError("Không tìm thấy email gốc (Sai ID?)")
+    #         # 1. Lấy thông tin email gốc
+    #         try:
+    #             original_msg = self.service.users().messages().get(
+    #                 userId='me', id=original_msg_id, format='metadata'
+    #             ).execute()
+    #         except Exception as e:
+    #             print(f"Lỗi bước 1 (Lấy email gốc): ID có thể sai. {e}")
+    #             raise ValueError("Không tìm thấy email gốc (Sai ID?)")
 
-            # 2. Xử lý Headers
-            try:
-                payload = original_msg.get('payload', {})
-                headers_list = payload.get('headers', [])
-                headers = {h['name']: h['value'] for h in headers_list}
+    #         # 2. Xử lý Headers
+    #         try:
+    #             payload = original_msg.get('payload', {})
+    #             headers_list = payload.get('headers', [])
+    #             headers = {h['name']: h['value'] for h in headers_list}
                 
-                # Lấy người nhận
-                reply_to_raw = headers.get('Reply-To', headers.get('From', ''))
-                name, clean_email = parseaddr(reply_to_raw)
+    #             # Lấy người nhận
+    #             reply_to_raw = headers.get('Reply-To', headers.get('From', ''))
+    #             name, clean_email = parseaddr(reply_to_raw)
                 
-                if not clean_email:
-                    print(f"Không tìm thấy email trong: {reply_to_raw}")
-                    # Fallback: Cố gắng lấy từ header khác hoặc báo lỗi rõ ràng
-                    raise ValueError(f"Không lấy được địa chỉ người nhận từ: {reply_to_raw}")
+    #             if not clean_email:
+    #                 print(f"Không tìm thấy email trong: {reply_to_raw}")
+    #                 # Fallback: Cố gắng lấy từ header khác hoặc báo lỗi rõ ràng
+    #                 raise ValueError(f"Không lấy được địa chỉ người nhận từ: {reply_to_raw}")
 
-                print(f"Sẽ gửi tới: {clean_email}")
+    #             print(f"Sẽ gửi tới: {clean_email}")
 
-                # Lấy Subject và ThreadId
-                subject = headers.get('Subject', '')
-                if not subject.lower().startswith('re:'):
-                    subject = f"Re: {subject}"
+    #             # Lấy Subject và ThreadId
+    #             subject = headers.get('Subject', '')
+    #             if not subject.lower().startswith('re:'):
+    #                 subject = f"Re: {subject}"
                 
-                thread_id = original_msg.get('threadId')
-                msg_id_header = headers.get('Message-ID')
+    #             thread_id = original_msg.get('threadId')
+    #             msg_id_header = headers.get('Message-ID')
                 
-            except Exception as e:
-                print(f"Lỗi bước 2 (Xử lý header): {e}")
-                raise ValueError("Email gốc bị lỗi cấu trúc, không đọc được Header")
+    #         except Exception as e:
+    #             print(f"Lỗi bước 2 (Xử lý header): {e}")
+    #             raise ValueError("Email gốc bị lỗi cấu trúc, không đọc được Header")
 
-            # 3. Tạo nội dung và Gửi
-            try:
-                message = MIMEMultipart()
-                message['to'] = clean_email
-                message['subject'] = subject
+    #         # 3. Tạo nội dung và Gửi
+    #         try:
+    #             message = MIMEMultipart()
+    #             message['to'] = clean_email
+    #             message['subject'] = subject
                 
-                if msg_id_header:
-                    message['In-Reply-To'] = msg_id_header
-                    message['References'] = msg_id_header
+    #             if msg_id_header:
+    #                 message['In-Reply-To'] = msg_id_header
+    #                 message['References'] = msg_id_header
 
-                # Đính kèm nội dung - giữ nguyên định dạng HTML từ FE
-                message.attach(MIMEText(body_content, 'html', 'utf-8'))
+    #             # Đính kèm nội dung - giữ nguyên định dạng HTML từ FE
+    #             message.attach(MIMEText(body_content, 'html', 'utf-8'))
 
-                # (Code xử lý file giữ nguyên...)
-                if attachments:
-                    for file_data in attachments:
-                        # ... (Code cũ của bạn) ...
-                        pass
+    #             # (Code xử lý file giữ nguyên...)
+    #             if attachments:
+    #                 for file_data in attachments:
+    #                     # ... (Code cũ của bạn) ...
+    #                     pass
 
-                raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-                body = {'raw': raw}
+    #             raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    #             body = {'raw': raw}
                 
-                if thread_id:
-                    body['threadId'] = thread_id
+    #             if thread_id:
+    #                 body['threadId'] = thread_id
 
-                sent_message = self.service.users().messages().send(
-                    userId='me', body=body
-                ).execute()
+    #             sent_message = self.service.users().messages().send(
+    #                 userId='me', body=body
+    #             ).execute()
                 
-                print(f"Đã gửi thành công! ID: {sent_message['id']}")
-                return sent_message
+    #             print(f"Đã gửi thành công! ID: {sent_message['id']}")
+    #             return sent_message
 
-            except Exception as e:
-                print(f"Lỗi bước 3 (Gửi đi): {e}")
-                raise e
+    #         except Exception as e:
+    #             print(f"Lỗi bước 3 (Gửi đi): {e}")
+    #             raise e
 
-        except Exception as e:
-            # Ném lỗi ra ngoài để Swagger hiển thị
-            raise e
+    #     except Exception as e:
+    #         # Ném lỗi ra ngoài để Swagger hiển thị
+    #         raise e
         
 
     # CẬP NHẬT BẢN NHÁP (Edit Draft) 
