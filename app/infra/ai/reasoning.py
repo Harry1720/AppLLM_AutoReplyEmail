@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, END
 from typing import List, TypedDict, Optional
 from langchain_community.vectorstores import SupabaseVectorStore
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_ollama import OllamaLLM 
+from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from supabase.client import create_client
 import os
@@ -24,6 +24,21 @@ class GraphState(TypedDict):
     draft_reply: dict
     error: str
 
+# --- CACHE EMBEDDINGS MODEL (LOAD 1 LẦN DUY NHẤT) ---
+_cached_embeddings = None
+
+def get_embeddings_model():
+    global _cached_embeddings
+    if _cached_embeddings is None:
+        logging.info("Đang tải Embeddings Model lần đầu...")
+        _cached_embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
+        logging.info("✓ Embeddings Model đã được cache!")
+    return _cached_embeddings
+
 class EmailReasoningSystem:
     def __init__(self, user_id: str, token_data: dict):
         self.user_id = user_id
@@ -35,15 +50,16 @@ class EmailReasoningSystem:
         # Kết nối Supabase Draft Repository
         self.draft_repo = DraftRepository()
         
-        # Setup AI - OLLAMA (Local)
-        self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        # Setup AI - GROQ (Cloud)
+        # SỬ DỤNG CACHED EMBEDDINGS thay vì tải lại mỗi lần
+        self.embeddings = get_embeddings_model()
         
-        # CẤU HÌNH OLLAMA TẠI ĐÂY
-        self.llm = OllamaLLM(
-            model="llama3",
-            format="json", # Bắt buộc trả về JSON
+        # CẤU HÌNH GROQ TẠI ĐÂY
+        self.llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            api_key=os.getenv("GROQ_API_KEY"),
             temperature=0  # Nhiệt độ 0 để trả lời nhất quán
-        )
+        ).bind(response_format={"type": "json_object"})
         
         self.supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
         self.vectorstore = SupabaseVectorStore(
@@ -56,7 +72,7 @@ class EmailReasoningSystem:
     # --- NODE 1: LẤY NỘI DUNG EMAIL ---
     def fetch_email_node(self, state: GraphState) -> GraphState:
         msg_id = state.get("target_email_id")
-        logging.info(f"[Ollama] Bắt đầu xử lý email ID: {msg_id}")
+        logging.info(f"[Groq] Bắt đầu xử lý email ID: {msg_id}")
         
         if not msg_id:
             return {**state, "error": "Không có ID email"}
@@ -111,7 +127,7 @@ class EmailReasoningSystem:
         email = state.get("current_email")
         if not email: return state
         
-        logging.info("Ollama đang suy nghĩ ...")
+        logging.info("Groq đang suy nghĩ ...")
         
         # Lấy context (nếu không có thì để trống để tránh nhiễu)
         context_str = "\n---\n".join(state["context_emails"]) if state.get("context_emails") else "Không có văn mẫu."
@@ -152,15 +168,42 @@ class EmailReasoningSystem:
            - BẠN KHÔNG ĐƯỢC CHÀO LẠI "Chào bộ phận quản lý".
            - BẠN PHẢI CHÀO TÊN HỌ: "Chào {sender}," hoặc "Chào bạn {sender},".
 
-        3. NỘI DUNG:
-           - Đi thẳng vào câu trả lời. Ngắn gọn, súc tích.
-           - Không thêm mở bài, kết bài dài dòng.
-           - Trả lời đúng trọng tâm câu hỏi.
-           - Không bịa ra thông tin ngày giờ cụ thể nếu không biết (dùng [Time], [Date]...).
+        3. NỘI DUNG (CHI TIẾT & CHUYÊN NGHIỆP):
+           - PHẢI viết CHI TIẾT và CỤ THỂ như một email công việc thực tế.
+           - HỌC THEO VĂN PHONG CỦA TÔI: Nếu [VĂN PHONG CỦA TÔI] có email tương tự, bắt chước cấu trúc và độ dài của tôi.
+           - CẤU TRÚC EMAIL CHUYÊN NGHIỆP (3-5 đoạn văn):
+             
+             ĐOẠN 1 - MỞ ĐẦU LỊCH SỰ (1-2 câu):
+             • Chào hỏi chuyên nghiệp với tên người gửi
+             • Cảm ơn hoặc ghi nhận nội dung email của họ
+             
+             ĐOẠN 2 - THỂ HIỆN HIỂU BIẾT & ĐÁNH GIÁ (2-3 câu):
+             • Tóm tắt lại những điểm chính mà người gửi đã đề cập (cho thấy bạn đọc kỹ)
+             • Đưa ra ý kiến, đánh giá, hoặc phản hồi ban đầu về đề xuất của họ
+             
+             ĐOẠN 3 - THÔNG TIN CHI TIẾT & CAM KẾT (3-5 câu):
+             • Nêu rõ hành động cụ thể bạn sẽ làm (xem xét, đánh giá, phân tích...)
+             • Đề cập các yếu tố quan trọng cần xem xét
+             • Nếu cần thông tin thêm, YÊU CẦU CỤ THỂ (không chung chung)
+             
+             ĐOẠN 4 - ĐỀ XUẤT BƯỚC TIẾP THEO (nếu phù hợp - 1-2 câu):
+             • Đề xuất lịch họp cụ thể (nếu cần): "Tôi có thể sắp xếp vào [thời gian gợi ý]"
+             • Hoặc hứa liên hệ lại trong khung thời gian cụ thể
+             
+             ĐOẠN 5 - KẾT THÚC (1 câu):
+             • Câu kết lịch sự, chuyên nghiệp
+             • Ký tên: "Trân trọng," hoặc tương đương
+
+           - ĐỘ DÀI TỐI THIỂU: 150-250 từ (khoảng 5-8 câu văn hoàn chỉnh)
+           - SỬ DỤNG PLACEHOLDER CHO THÔNG TIN KHÔNG BIẾT:
+             • Thời gian: "[Time]" hoặc "[Thời gian phù hợp]"
+             • Ngày: "[Date]" hoặc "[Ngày cụ thể]"  
+             • Tên công ty/sản phẩm: Dùng tên từ email gốc
+           - TRÁNH TUYỆT ĐỐI: Câu trả lời chung chung, ngắn gọn 1-2 dòng, thiếu nội dung cụ thể
 
         4. THÁI ĐỘ (Dựa trên nội dung):
            - Nếu khách đang giận (khiếu nại) -> Hãy xin lỗi, nhún nhường, xưng "Em/Mình" hoặc "Chúng tôi".
-           - Nếu là công việc -> Chuyên nghiệp.
+           - Nếu là công việc -> Chuyên nghiệp, trang trọng, có chiều sâu.
            - Nếu là bạn bè -> Thân mật, vui vẻ.
            - Nếu không rõ -> Trung lập, lịch sự.
 
@@ -173,8 +216,8 @@ class EmailReasoningSystem:
         }}
         """
         
-        # Cắt nội dung ngắn bớt để AI tập trung vào ngôn ngữ
-        body_content = email.get('body', '')[:1000] # Lấy 1000 ký tự đầu
+        # Lấy nội dung đầy đủ hơn để LLM có đủ ngữ cảnh viết chi tiết
+        body_content = email.get('body', '')[:2500] # Tăng từ 1000 lên 2500 ký tự
 
         prompt = PromptTemplate.from_template(template).format(
             context=context_str,
@@ -185,11 +228,17 @@ class EmailReasoningSystem:
         )
         
         try:
-            # Gọi Ollama
+            # Gọi Groq
             response = self.llm.invoke(prompt)
             
-            # Xử lý làm sạch JSON (Ollama hay thêm ```json ở đầu)
-            response_clean = str(response).strip()
+            # ChatGroq trả về AIMessage object, cần lấy content
+            if hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
+            
+            # Xử lý làm sạch JSON (LLM hay thêm ```json ở đầu)
+            response_clean = response_text.strip()
             if "```json" in response_clean:
                 response_clean = response_clean.split("```json")[1].split("```")[0]
             elif "```" in response_clean:
@@ -200,7 +249,7 @@ class EmailReasoningSystem:
             return {**state, "draft_reply": draft}
             
         except Exception as e:
-            logging.error(f"Lỗi Ollama Gen: {e}")
+            logging.error(f"Lỗi Groq Gen: {e}")
             return {**state, "draft_reply": {
                 "subject": f"Re: {email.get('subject')}",
                 "body": "Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau."

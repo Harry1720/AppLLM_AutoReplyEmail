@@ -1,5 +1,11 @@
 from app.infra.supabase_client import get_supabase
 from app.domain.entities.user_entity import UserEntity
+from datetime import datetime, timedelta, timezone
+
+# Helper function để lấy giờ Việt Nam
+def get_vietnam_time():
+    """Trả về thời gian hiện tại theo múi giờ Việt Nam (UTC+7)"""
+    return datetime.now(timezone.utc) + timedelta(hours=7)
 
 class UserRepository:
     def __init__(self):
@@ -29,7 +35,8 @@ class UserRepository:
             "email": email,
             "name": name,
             "picture": picture,
-            "google_refresh_token": refresh_token
+            "google_refresh_token": refresh_token,
+            "created_at": get_vietnam_time().isoformat()  # Set giờ Việt Nam
         }
         
         # Dùng UPSERT để tránh lỗi trùng email
