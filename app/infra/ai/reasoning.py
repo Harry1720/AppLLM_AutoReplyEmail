@@ -12,6 +12,7 @@ import base64
 from email.mime.text import MIMEText
 from app.infra.services.gmail_service import GmailService
 from app.domain.repositories.draft_repository import DraftRepository
+from app.domain.entities import DraftEntity
 
 logging.basicConfig(level=logging.INFO)
 
@@ -317,15 +318,19 @@ class EmailReasoningSystem:
                     thread_id = original_msg.get('threadId', '')
                     
                     # Lưu vào bảng email_drafts với schema đầy đủ
-                    supabase_draft = self.draft_repo.create_draft(
-                        user_id=self.user_id,     
-                        email_id=email['id'],     
-                        thread_id=thread_id,       
-                        draft_id=draft_id,        
+                    new_draft_entity = DraftEntity(
+                        user_id=self.user_id,
+                        email_id=email['id'],
+                        thread_id=thread_id,
+                        draft_id=draft_id,
                         subject=draft.get("subject", ""),
                         body=draft.get("body", ""),
-                        recipient=recipient_email
+                        recipient=recipient_email,
+                        status="draft" # Mặc định
                     )
+                    
+                    # Truyền object vào Repository
+                    supabase_draft = self.draft_repo.create_draft(new_draft_entity)
                     
                     if supabase_draft:
                         logging.info(f"Draft đã được lưu vào Supabase với ID: {supabase_draft.get('id')}")

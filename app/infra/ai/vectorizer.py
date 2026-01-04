@@ -7,6 +7,7 @@ from langchain_community.vectorstores import SupabaseVectorStore
 from supabase.client import create_client
 from app.infra.services.gmail_service import GmailService # Import Service dự án
 import uuid
+import app.domain.entities.document_entity as document_entity
 
 logging.basicConfig(level=logging.INFO)
 
@@ -114,28 +115,29 @@ class EmailVectorizer:
             if all_chunks:
                 logging.info(f"Đang tạo embeddings cho {len(all_chunks)} chunks...")
                 try:
-                    # embed_documents() nhanh hơn nhiều so với gọi embed_query() từng cái
                     all_embeddings = self.embeddings.embed_documents(all_chunks)
                     
-                    # Batch insert vào Supabase
                     logging.info(f"Đang lưu {len(all_chunks)} chunks vào database...")
-                    batch_data = []
-                    for i, (chunk, metadata, embedding) in enumerate(zip(all_chunks, all_metadatas, all_embeddings)):
-                        batch_data.append({
-                            "id": str(uuid.uuid4()),
-                            "content": chunk,
-                            "metadata": metadata,
-                            "embedding": embedding,
-                            "user_id": self.user_id
-                        })
                     
-                    # Insert theo batch 10 records để tránh timeout
+                    batch_data = []
+                    for chunk, metadata, embedding in zip(all_chunks, all_metadatas, all_embeddings):
+
+                        # Tạo object để validate dữ liệu
+                        doc = document_entity(
+                            content=chunk,
+                            metadata=metadata,
+                            embedding=embedding,
+                            user_id=self.user_id
+                        )
+                        batch_data.append(doc.model_dump())
+                    
+                    # Insert theo batch
                     batch_size = 10
                     for i in range(0, len(batch_data), batch_size):
                         batch = batch_data[i:i + batch_size]
                         self.supabase.table("documents").insert(batch).execute()
                     
-                    logging.info(f"✓ Đã lưu xong {len(all_chunks)} chunks cho {synced_count} email mới")
+                    logging.info(f"✓ Đã lưu xong...")
                     
                 except Exception as e:
                     logging.error(f"Lỗi batch embedding/insert: {e}")

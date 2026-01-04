@@ -12,3 +12,4 @@ class DraftEntity:
     body: str
     recipient: str
     status: str = "draft"
+    created_at: Optional[str] = None
