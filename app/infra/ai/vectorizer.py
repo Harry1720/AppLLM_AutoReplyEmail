@@ -1,19 +1,17 @@
 import os
 import logging
-from datetime import datetime, timezone, timedelta
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase.client import create_client
-from app.infra.services.gmail_service import GmailService # Import Service dự án
-import uuid
-import app.domain.entities.document_entity as document_entity
+from app.infra.services.gmail_service import GmailService
+# SỬA LẠI IMPORT: Chỉ cần import Class DocumentEntity
+from app.domain.entities.document_entity import DocumentEntity 
 
 logging.basicConfig(level=logging.INFO)
 
-# Cache embeddings model globally
+# ... (Phần Cache Embeddings giữ nguyên) ...
 _cached_vectorizer_embeddings = None
-
 def get_vectorizer_embeddings():
     global _cached_vectorizer_embeddings
     if _cached_vectorizer_embeddings is None:
@@ -29,12 +27,8 @@ def get_vectorizer_embeddings():
 class EmailVectorizer:
     def __init__(self, user_id: str, token_data: dict):
         self.user_id = user_id
-        
         self.gmail = GmailService(token_data)
-
-        # Cấu hình AI & DB - Sử dụng cached embeddings
         self.embeddings = get_vectorizer_embeddings()
-        # Giảm chunk_overlap từ 100 -> 50 để tăng tốc
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=50)
         
         self.supabase = create_client(
@@ -42,7 +36,7 @@ class EmailVectorizer:
             os.getenv("SUPABASE_SERVICE_KEY")
         )
         
-        self.vectorstore = SupabaseVectorStore(
+        self.vector_store = SupabaseVectorStore(
             client=self.supabase,
             embedding=self.embeddings,
             table_name="documents",
@@ -61,21 +55,14 @@ class EmailVectorizer:
             existing_email_ids = self._get_existing_email_ids()
             logging.info(f"Đã có {len(existing_email_ids)} email trong database")
 
-            # Lọc email mới trước
             new_emails = [e for e in sent_emails if e['id'] not in existing_email_ids]
             skipped_count = len(sent_emails) - len(new_emails)
             
             if not new_emails:
-                logging.info(f"Tất cả {len(sent_emails)} email đều đã tồn tại trong database")
-                return {
-                    "synced_count": 0,
-                    "skipped_count": skipped_count,
-                    "message": "Không có email mới"
-                }
+                return {"synced_count": 0, "skipped_count": skipped_count, "message": "Không có email mới"}
             
             logging.info(f"Tìm thấy {len(new_emails)} email mới cần vector hóa")
 
-            # Xử lý batch embedding cho tất cả chunks cùng lúc
             all_chunks = []
             all_metadatas = []
             synced_count = 0
@@ -83,19 +70,12 @@ class EmailVectorizer:
             for email in new_emails:
                 try:
                     email_id = email['id']
-                    
-                    # Lấy nội dung chi tiết
                     detail = self.gmail.get_email_detail(email_id)
-                    if not detail: 
-                        continue
+                    if not detail: continue
 
-                    # Chỉ lấy text đơn giản
                     full_content = f"Subject: {detail['subject']}\nContent: {detail['snippet']}\n{detail['body'][:2000]}"
-                    
-                    # Chia nhỏ văn bản
                     chunks = self.text_splitter.split_text(full_content)
                     
-                    # Tạo metadata
                     metadata = {
                         "user_id": self.user_id,
                         "email_id": detail['id'],
@@ -105,30 +85,27 @@ class EmailVectorizer:
                     
                     all_chunks.extend(chunks)
                     all_metadatas.extend([metadata for _ in chunks])
-                    
                     synced_count += 1
-                    
                 except Exception as e:
                     logging.error(f"Lỗi xử lý email {email.get('id', 'unknown')}: {e}")
             
-            # BATCH EMBEDDING - Tạo embedding cho tất cả chunks cùng lúc (nhanh hơn nhiều)
             if all_chunks:
                 logging.info(f"Đang tạo embeddings cho {len(all_chunks)} chunks...")
                 try:
                     all_embeddings = self.embeddings.embed_documents(all_chunks)
                     
                     logging.info(f"Đang lưu {len(all_chunks)} chunks vào database...")
-                    
                     batch_data = []
+                    
                     for chunk, metadata, embedding in zip(all_chunks, all_metadatas, all_embeddings):
-
-                        # Tạo object để validate dữ liệu
-                        doc = document_entity(
+                        # === SỬA TẠI ĐÂY: Dùng Class DocumentEntity ===
+                        doc = DocumentEntity(
                             content=chunk,
                             metadata=metadata,
                             embedding=embedding,
                             user_id=self.user_id
                         )
+                        # ==============================================
                         batch_data.append(doc.model_dump())
                     
                     # Insert theo batch
@@ -138,12 +115,11 @@ class EmailVectorizer:
                         self.supabase.table("documents").insert(batch).execute()
                     
                     logging.info(f"✓ Đã lưu xong...")
-                    
                 except Exception as e:
                     logging.error(f"Lỗi batch embedding/insert: {e}")
                     raise
 
-            logging.info(f"Hoàn tất! Đã học {synced_count} email mới, bỏ qua {skipped_count} email đã có.")
+            logging.info(f"Hoàn tất! Đã học {synced_count} email mới.")
             return {
                 "synced_count": synced_count,
                 "skipped_count": skipped_count,
@@ -156,7 +132,11 @@ class EmailVectorizer:
     
     def _get_existing_email_ids(self):
         try:
-            response = self.supabase.table("documents").select("metadata").eq("metadata->>user_id", self.user_id).execute()
+            # Lấy danh sách ID đã tồn tại để tránh trùng lặp
+            response = self.supabase.table("documents")\
+                .select("metadata")\
+                .eq("metadata->>user_id", self.user_id)\
+                .execute()
             
             existing_ids = set()
             if response.data:
@@ -165,9 +145,7 @@ class EmailVectorizer:
                     email_id = metadata.get("email_id")
                     if email_id:
                         existing_ids.add(email_id)
-            
             return existing_ids
-            
         except Exception as e:
             logging.error(f"Lỗi lấy danh sách email đã có: {e}")
-            return set()  # Trả về set rỗng nếu lỗi (sẽ sync tất cả)
+            return set()

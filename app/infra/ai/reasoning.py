@@ -37,7 +37,7 @@ def get_embeddings_model():
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True}
         )
-        logging.info("✓ Embeddings Model đã được cache!")
+        logging.info(" Embeddings Model đã được cache!")
     return _cached_embeddings
 
 class EmailReasoningSystem:
@@ -188,7 +188,7 @@ class EmailReasoningSystem:
             }}
         
 
-    # --- NODE 4: TẠO BẢN NHÁP (ĐÃ UPDATE CHO ENTITY) ---
+    # --- NODE 4: TẠO BẢN NHÁP ---
     def create_draft_node(self, state: GraphState) -> GraphState:
         draft = state.get("draft_reply")
         email = state.get("current_email")
