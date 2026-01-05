@@ -46,20 +46,19 @@ class EmailReasoningSystem:
         
         # Kết nối Gmail (Wrapper)
         self.gmail_wrapper = GmailService(token_data)
-        self.gmail = self.gmail_wrapper.service # Object gốc để gọi API chuyên sâu
+        self.gmail = self.gmail_wrapper.service 
         
         # Kết nối Supabase Draft Repository
         self.draft_repo = DraftRepository()
         
         # Setup AI - GROQ (Cloud)
-        # SỬ DỤNG CACHED EMBEDDINGS thay vì tải lại mỗi lần
         self.embeddings = get_embeddings_model()
         
         # CẤU HÌNH GROQ TẠI ĐÂY
         self.llm = ChatGroq(
             model="llama-3.3-70b-versatile",
             api_key=os.getenv("GROQ_API_KEY"),
-            temperature=0  # Nhiệt độ 0 để trả lời nhất quán
+            temperature=0 
         ).bind(response_format={"type": "json_object"})
         
         self.supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -96,10 +95,8 @@ class EmailReasoningSystem:
         query = f"{email['subject']} {email['body'][:200]}"
         
         try:
-            # Tạo embedding cho query
             query_embedding = self.embeddings.embed_query(query)
             
-            # Gọi trực tiếp RPC function match_documents với filter_user_id
             response = self.supabase.rpc(
                 'match_documents',
                 {
@@ -109,7 +106,6 @@ class EmailReasoningSystem:
                 }
             ).execute()
             
-            # Parse kết quả
             context = []
             if response.data:
                 for doc in response.data:
@@ -123,102 +119,41 @@ class EmailReasoningSystem:
             logging.warning(f"Lỗi RAG: {e}. Tiếp tục không có context.")
             return {**state, "context_emails": []}
 
-   # --- NODE 3: VIẾT TRẢ LỜI (FIX LỖI NHÁI & SAI NGÔN NGỮ) ---
+    # --- NODE 3: VIẾT TRẢ LỜI ---
     def generate_reply_node(self, state: GraphState) -> GraphState:
         email = state.get("current_email")
         if not email: return state
         
         logging.info("Groq đang suy nghĩ ...")
         
-        # Lấy context (nếu không có thì để trống để tránh nhiễu)
         context_str = "\n---\n".join(state["context_emails"]) if state.get("context_emails") else "Không có văn mẫu."
-        
-        # Instruction mặc định
         instruction = state.get("instruction", "Phản hồi phù hợp và chuyên nghiệp.")
 
-        # --- TEMPLATE MỚI: ÉP NGÔN NGỮ & CHỐNG NHÁI ---
         template = """
         VAI TRÒ CỦA BẠN:
         Bạn là chính tôi (chủ sở hữu email). Bạn đang viết thư trả lời cho người khác.
         KHÔNG ĐƯỢC đóng vai người gửi. KHÔNG ĐƯỢC lặp lại lời người gửi.
 
         DỮ LIỆU ĐẦU VÀO:
-        1. [VĂN PHONG CỦA TÔI] (Tham khảo cách tôi viết):
-        {context}
-        
+        1. [VĂN PHONG CỦA TÔI]: {context}
         2. [EMAIL NGƯỜI KHÁC GỬI ĐẾN]:
-        - Người gửi: {sender}
-        - Chủ đề: {subject}
-        - Nội dung gốc: "{body}"
-        
+           - Người gửi: {sender}
+           - Chủ đề: {subject}
+           - Nội dung gốc: "{body}"
         3. [YÊU CẦU]: "{instruction}"
 
-        QUY TẮC BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
-        
-        1. TỰ ĐỘNG PHÁT HIỆN NGÔN NGỮ (QUAN TRỌNG NHẤT):
-           - Hãy đọc "Nội dung gốc".
-           - Nếu người gửi viết TIẾNG ANH -> Bạn BẮT BUỘC trả lời bằng TIẾNG ANH.
-           - Nếu người gửi viết TIẾNG VIỆT -> Bạn BẮT BUỘC trả lời bằng TIẾNG VIỆT.
-           - (Bỏ qua ngôn ngữ của phần [VĂN PHONG CỦA TÔI], chỉ quan tâm ngôn ngữ của email mới).
-
-        2. CHỐNG NHÁI (ANTI-PARROTING):
-           - Đây là thư "REPLY" (Trả lời).
-           - Tuyệt đối KHÔNG chép lại nội dung của người gửi.
-           - Ví dụ: Họ hỏi "Khỏe không?", bạn trả lời "Tôi khỏe", KHÔNG ĐƯỢC viết lại "Khỏe không?".
-           - Khách nói "Chào bộ phận quản lý" -> ĐÓ LÀ LỜI HỌ NÓI VỚI BẠN.
-           - BẠN KHÔNG ĐƯỢC CHÀO LẠI "Chào bộ phận quản lý".
-           - BẠN PHẢI CHÀO TÊN HỌ: "Chào {sender}," hoặc "Chào bạn {sender},".
-
-        3. NỘI DUNG (CHI TIẾT & CHUYÊN NGHIỆP):
-           - PHẢI viết CHI TIẾT và CỤ THỂ như một email công việc thực tế.
-           - HỌC THEO VĂN PHONG CỦA TÔI: Nếu [VĂN PHONG CỦA TÔI] có email tương tự, bắt chước cấu trúc và độ dài của tôi.
-           - CẤU TRÚC EMAIL CHUYÊN NGHIỆP (3-5 đoạn văn):
-             
-             ĐOẠN 1 - MỞ ĐẦU LỊCH SỰ (1-2 câu):
-             • Chào hỏi chuyên nghiệp với tên người gửi
-             • Cảm ơn hoặc ghi nhận nội dung email của họ
-             
-             ĐOẠN 2 - THỂ HIỆN HIỂU BIẾT & ĐÁNH GIÁ (2-3 câu):
-             • Tóm tắt lại những điểm chính mà người gửi đã đề cập (cho thấy bạn đọc kỹ)
-             • Đưa ra ý kiến, đánh giá, hoặc phản hồi ban đầu về đề xuất của họ
-             
-             ĐOẠN 3 - THÔNG TIN CHI TIẾT & CAM KẾT (3-5 câu):
-             • Nêu rõ hành động cụ thể bạn sẽ làm (xem xét, đánh giá, phân tích...)
-             • Đề cập các yếu tố quan trọng cần xem xét
-             • Nếu cần thông tin thêm, YÊU CẦU CỤ THỂ (không chung chung)
-             
-             ĐOẠN 4 - ĐỀ XUẤT BƯỚC TIẾP THEO (nếu phù hợp - 1-2 câu):
-             • Đề xuất lịch họp cụ thể (nếu cần): "Tôi có thể sắp xếp vào [thời gian gợi ý]"
-             • Hoặc hứa liên hệ lại trong khung thời gian cụ thể
-             
-             ĐOẠN 5 - KẾT THÚC (1 câu):
-             • Câu kết lịch sự, chuyên nghiệp
-             • Ký tên: "Trân trọng," hoặc tương đương
-
-           - ĐỘ DÀI TỐI THIỂU: 150-250 từ (khoảng 5-8 câu văn hoàn chỉnh)
-           - SỬ DỤNG PLACEHOLDER CHO THÔNG TIN KHÔNG BIẾT:
-             • Thời gian: "[Time]" hoặc "[Thời gian phù hợp]"
-             • Ngày: "[Date]" hoặc "[Ngày cụ thể]"  
-             • Tên công ty/sản phẩm: Dùng tên từ email gốc
-           - TRÁNH TUYỆT ĐỐI: Câu trả lời chung chung, ngắn gọn 1-2 dòng, thiếu nội dung cụ thể
-
-        4. THÁI ĐỘ (Dựa trên nội dung):
-           - Nếu khách đang giận (khiếu nại) -> Hãy xin lỗi, nhún nhường, xưng "Em/Mình" hoặc "Chúng tôi".
-           - Nếu là công việc -> Chuyên nghiệp, trang trọng, có chiều sâu.
-           - Nếu là bạn bè -> Thân mật, vui vẻ.
-           - Nếu không rõ -> Trung lập, lịch sự.
-
-
-        ĐỊNH DẠNG OUTPUT (JSON ONLY):
-        Chỉ trả về JSON hợp lệ. Không được có bất kỳ dòng chữ nào khác bên ngoài JSON.
+        QUY TẮC BẮT BUỘC:
+        1. NGÔN NGỮ: Nếu khách viết Anh -> Trả lời Anh. Khách viết Việt -> Trả lời Việt.
+        2. CHỐNG NHÁI: KHÔNG lặp lại câu hỏi của khách.
+        3. CẤU TRÚC: Chào hỏi -> Tóm tắt ý hiểu -> Phản hồi chi tiết -> Đề xuất tiếp theo -> Kết thư.
+        4. OUTPUT FORMAT (JSON ONLY):
         {{
-            "subject": "Tiêu đề thư (Thêm 'Re:' phía trước tiêu đề gốc)",
-            "body": "Nội dung thư trả lời (Định dạng HTML, xuống dòng dùng <br>)"
+            "subject": "Tiêu đề thư",
+            "body": "Nội dung HTML (dùng <br> để xuống dòng)"
         }}
         """
         
-        # Lấy nội dung đầy đủ hơn để LLM có đủ ngữ cảnh viết chi tiết
-        body_content = email.get('body', '')[:2500] # Tăng từ 1000 lên 2500 ký tự
+        body_content = email.get('body', '')[:2500]
 
         prompt = PromptTemplate.from_template(template).format(
             context=context_str,
@@ -229,23 +164,19 @@ class EmailReasoningSystem:
         )
         
         try:
-            # Gọi Groq
             response = self.llm.invoke(prompt)
             
-            # ChatGroq trả về AIMessage object, cần lấy content
             if hasattr(response, 'content'):
                 response_text = response.content
             else:
                 response_text = str(response)
             
-            # Xử lý làm sạch JSON (LLM hay thêm ```json ở đầu)
             response_clean = response_text.strip()
             if "```json" in response_clean:
                 response_clean = response_clean.split("```json")[1].split("```")[0]
             elif "```" in response_clean:
                 response_clean = response_clean.split("```")[1].split("```")[0]
             
-            # Parse JSON
             draft = json.loads(response_clean.strip())
             return {**state, "draft_reply": draft}
             
@@ -257,7 +188,7 @@ class EmailReasoningSystem:
             }}
         
 
-    # --- NODE 4: TẠO BẢN NHÁP (ĐÃ SỬA ĐỂ GẮN VÀO THREAD) ---
+    # --- NODE 4: TẠO BẢN NHÁP (ĐÃ UPDATE CHO ENTITY) ---
     def create_draft_node(self, state: GraphState) -> GraphState:
         draft = state.get("draft_reply")
         email = state.get("current_email")
@@ -265,7 +196,7 @@ class EmailReasoningSystem:
         if draft and email:
             logging.info("Đang tạo Draft Reply trong Thread...")
             try:
-                # 1. Lấy thông tin email gốc chi tiết hơn để có Message-ID
+                # 1. Lấy thông tin email gốc
                 original_msg = self.gmail.users().messages().get(
                     userId='me', 
                     id=email['id'], 
@@ -276,33 +207,31 @@ class EmailReasoningSystem:
                 headers_list = payload.get('headers', [])
                 headers = {h['name']: h['value'] for h in headers_list}
                 
-                # 2. Lấy người nhận (từ người gửi email gốc)
+                # 2. Lấy người nhận
                 recipient = email['from']
                 if '<' in recipient: 
                     recipient = recipient.split('<')[1].replace('>', '')
 
-                # 3. Tạo message với Thread references
+                # 3. Tạo message MIMEText
                 message = MIMEText(draft['body'], 'html', 'utf-8')
                 message['to'] = recipient
                 message['subject'] = draft['subject']
                 
-                # QUAN TRỌNG: Gắn Thread References để Gmail hiểu đây là Reply
                 msg_id_header = headers.get('Message-ID')
                 if msg_id_header:
                     message['In-Reply-To'] = msg_id_header
                     message['References'] = msg_id_header
                 
-                # 4. Encode và tạo Draft
+                # 4. Encode
                 raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-                
                 body = {
                     'message': {
                         'raw': raw,
-                        'threadId': original_msg.get('threadId')  # ⭐ Gắn Thread ID
+                        'threadId': original_msg.get('threadId')
                     }
                 }
                 
-                # 5. Gọi API tạo Draft
+                # 5. Gọi API Gmail
                 draft_result = self.gmail.users().drafts().create(
                     userId='me', 
                     body=body
@@ -311,13 +240,12 @@ class EmailReasoningSystem:
                 draft_id = draft_result['id']
                 logging.info(f"Đã tạo Draft Reply trong Thread! Draft ID: {draft_id}")
                 
-                # 6. LƯU DRAFT VÀO SUPABASE
+                # 6. LƯU DRAFT VÀO SUPABASE (Entity)
                 try:
-                    # Lấy thông tin người nhận và thread_id
                     recipient_email = email.get("from", "")
                     thread_id = original_msg.get('threadId', '')
                     
-                    # Lưu vào bảng email_drafts với schema đầy đủ
+                    # Tạo Entity (Không truyền id vì nó là Optional)
                     new_draft_entity = DraftEntity(
                         user_id=self.user_id,
                         email_id=email['id'],
@@ -326,21 +254,21 @@ class EmailReasoningSystem:
                         subject=draft.get("subject", ""),
                         body=draft.get("body", ""),
                         recipient=recipient_email,
-                        status="draft" # Mặc định
+                        status="draft"
                     )
                     
-                    # Truyền object vào Repository
+                    # Lưu vào DB
                     supabase_draft = self.draft_repo.create_draft(new_draft_entity)
                     
                     if supabase_draft:
-                        logging.info(f"Draft đã được lưu vào Supabase với ID: {supabase_draft.get('id')}")
+                        # === ĐÃ SỬA: Dùng .id thay vì .get('id') ===
+                        logging.info(f"Draft đã được lưu vào Supabase với ID: {supabase_draft.id}")
                     else:
-                        logging.warning("Không thể lưu draft vào Supabase (không chặn workflow)")
+                        logging.warning("Không thể lưu draft vào Supabase")
                         
                 except Exception as e:
                     logging.error(f"Lỗi lưu draft vào Supabase: {e} (tiếp tục workflow)")
                 
-                # CẬP NHẬT: Trả về draft_id trong state
                 updated_draft = {**draft, "draft_id": draft_id}
                 return {**state, "draft_reply": updated_draft}
                 

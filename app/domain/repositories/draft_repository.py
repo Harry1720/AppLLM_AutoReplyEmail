@@ -25,7 +25,7 @@ class DraftRepository:
             if not draft_data.get("created_at"):
                 draft_data["created_at"] = get_vietnam_time().isoformat()
             
-            res = self.db.table(self.table_name).insert(draft_data).execute()
+            res = self.db.table(self.table_name).upsert(draft_data).execute()
             
             if res.data and len(res.data) > 0:
                 created_draft = DraftEntity(**res.data[0]) 
