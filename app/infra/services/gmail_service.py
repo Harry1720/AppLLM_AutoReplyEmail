@@ -228,7 +228,7 @@ class GmailService:
             print(f"Lỗi lọc email: {e}")
             return {"emails": [], "next_page_token": None}
 
-    # CREATE Email) 
+    # CREATE Email
     def send_email(self, to_email, subject, body_content, attachments=None):
         try:
             # Tạo container (Multipart) thay vì text đơn thuần

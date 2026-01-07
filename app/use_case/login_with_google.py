@@ -12,7 +12,6 @@ class LoginWithGoogleUseCase:
 
     def __init__(self):
         self.repo = UserRepository()
-        # Cấu hình OAuth lấy từ Google Cloud Console (.env)
         self.client_config = {
             "web": {
                 "client_id": os.getenv("GOOGLE_CLIENT_ID"),

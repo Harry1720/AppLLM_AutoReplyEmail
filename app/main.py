@@ -18,13 +18,13 @@ async def startup_event():
     """Preload AI models when server starts to avoid delays on first request"""
     logging.info("Server starting - Preloading AI models...")
     from app.infra.ai.reasoning import get_embeddings_model
-    get_embeddings_model()  # This will cache the embeddings model
+    get_embeddings_model() 
     logging.info("AI models loaded and ready!")
 
 # Add CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=["http://localhost:3000"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

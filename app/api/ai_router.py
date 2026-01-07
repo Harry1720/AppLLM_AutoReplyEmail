@@ -41,7 +41,6 @@ async def generate_reply(
     token_data: dict = Depends(get_token_dependency)
 ):
     try:
-        # Gọi UseCase
         use_case = GenerateReplyUseCase(user_id, token_data)
         result = use_case.execute(req.msg_id)
         return result
@@ -57,7 +56,6 @@ async def check_sync_status(
     token_data: dict = Depends(get_token_dependency)
 ):
     try:
-        # Gọi UseCase
         use_case = CheckAndAutoSyncUseCase(user_id, token_data)
         result = use_case.execute()
         return result

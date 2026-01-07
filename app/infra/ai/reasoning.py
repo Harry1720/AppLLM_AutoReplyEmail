@@ -118,7 +118,7 @@ class EmailReasoningSystem:
             logging.warning(f"Lỗi RAG: {e}. Tiếp tục không có context.")
             return {**state, "context_emails": []}
 
-   # --- NODE 3: VIẾT TRẢ LỜI (DÙNG PROMPT TIẾNG VIỆT CŨ) ---
+   # --- NODE 3: VIẾT TRẢ LỜI  ---
     def generate_reply_node(self, state: GraphState) -> GraphState:
         email = state.get("current_email")
         if not email: return state
@@ -134,25 +134,25 @@ class EmailReasoningSystem:
         # === PROMPT CẢI THIỆN - ƯU TIÊN NGÔN NGỮ ===
         template = """
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        ⚠️  QUY TẮC SỐ 1 - QUAN TRỌNG NHẤT (BẮT BUỘC):
+          QUY TẮC SỐ 1 - QUAN TRỌNG NHẤT (BẮT BUỘC):
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        🔹 PHÁT HIỆN NGÔN NGỮ VÀ PHẢN HỒI ĐÚNG NGÔN NGỮ:
+         PHÁT HIỆN NGÔN NGỮ VÀ PHẢN HỒI ĐÚNG NGÔN NGỮ:
         
         BƯỚC 1: Đọc kỹ "Nội dung gốc" (phần [2] bên dưới)
         BƯỚC 2: Xác định ngôn ngữ chính của email đó
         BƯỚC 3: Trả lời HOÀN TOÀN bằng ngôn ngữ đó
         
-        ✅ VÍ DỤ:
+         VÍ DỤ:
         - Nếu email gốc: "Hi, how are you?" → Trả lời: "I'm fine, thank you!"
         - Nếu email gốc: "Xin chào, bạn khỏe không?" → Trả lời: "Tôi khỏe, cảm ơn bạn!"
         
-        ❌ TUYỆT ĐỐI KHÔNG:
+         TUYỆT ĐỐI KHÔNG:
         - Email tiếng Anh → Trả lời tiếng Việt
         - Email tiếng Việt → Trả lời tiếng Anh
         - Trộn lẫn 2 ngôn ngữ
         
-        📌 LƯU Ý: Phần [VĂN PHONG CỦA TÔI] chỉ để học phong cách viết (tính cách, độ dài câu),
+         LƯU Ý: Phần [VĂN PHONG CỦA TÔI] chỉ để học phong cách viết (tính cách, độ dài câu),
         KHÔNG dùng để quyết định ngôn ngữ. CHỈ nhìn vào [EMAIL NGƯỜI KHÁC GỬI ĐẾN] để biết ngôn ngữ.
         
         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -183,8 +183,8 @@ class EmailReasoningSystem:
            - Đây là thư "REPLY" (Trả lời).
            - Tuyệt đối KHÔNG chép lại nội dung của người gửi.
            - Ví dụ: 
-             ❌ Họ: "How are you?" → Bạn: "How are you? I'm fine"
-             ✅ Họ: "How are you?" → Bạn: "I'm fine, thank you!"
+              Họ: "How are you?" → Bạn: "How are you? I'm fine"
+              Họ: "How are you?" → Bạn: "I'm fine, thank you!"
            - Khách nói "Dear Support Team" → ĐÓ LÀ LỜI HỌ GỬI.
            - BẠN PHẢI CHÀO NGƯỢC LẠI: "Dear {sender}," hoặc "Hi {sender},"
 
@@ -209,7 +209,7 @@ class EmailReasoningSystem:
             "body": "Nội dung thư trả lời (Định dạng HTML, xuống dòng dùng <br>)"
         }}
         
-        🎯 NHẮC LẠI LẦN CUỐI: Trả lời bằng chính xác ngôn ngữ của "Nội dung gốc" ở phần [2]!
+         NHẮC LẠI LẦN CUỐI: Trả lời bằng chính xác ngôn ngữ của "Nội dung gốc" ở phần [2]!
         """
         
         # Cắt nội dung ngắn bớt để AI tập trung

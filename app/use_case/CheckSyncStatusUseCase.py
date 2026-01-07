@@ -8,7 +8,7 @@ class CheckAndAutoSyncUseCase:
         self.user_id = user_id
         self.token_data = token_data
         self.db = get_supabase()
-        # Khởi tạo vectorizer sẵn
+
         self.vectorizer = EmailVectorizer(user_id, token_data)
 
     def execute(self):
