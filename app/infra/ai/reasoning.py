@@ -25,7 +25,6 @@ class GraphState(TypedDict):
     draft_reply: dict
     error: str
 
-# --- CACHE EMBEDDINGS MODEL (LOAD 1 LẦN DUY NHẤT) ---
 _cached_embeddings = None
 
 def get_embeddings_model():
@@ -261,7 +260,6 @@ class EmailReasoningSystem:
                     supabase_draft = self.draft_repo.create_draft(new_draft_entity)
                     
                     if supabase_draft:
-                        # === ĐÃ SỬA: Dùng .id thay vì .get('id') ===
                         logging.info(f"Draft đã được lưu vào Supabase với ID: {supabase_draft.id}")
                     else:
                         logging.warning("Không thể lưu draft vào Supabase")

@@ -16,7 +16,6 @@ class DraftRepository:
         self.db = get_supabase()
         self.table_name = "email_drafts"
     
-    # Bây giờ Python đã hiểu DraftEntity là một Class
     def create_draft(self, draft: DraftEntity) -> Optional[DraftEntity]:
    
         try:

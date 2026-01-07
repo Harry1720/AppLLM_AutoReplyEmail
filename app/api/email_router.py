@@ -5,7 +5,7 @@ from app.api.deps import get_token_dependency
 from app.api.user_router import get_current_user_id
 from app.core.enums import EmailFolder, EmailStatus
 from app.domain.repositories.draft_repository import DraftRepository
-from app.domain.entities.draft_entity import DraftEntity # <--- Import Entity
+from app.domain.entities.draft_entity import DraftEntity 
 import logging
 
 email_router = APIRouter()

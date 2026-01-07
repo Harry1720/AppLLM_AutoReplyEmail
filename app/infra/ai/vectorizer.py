@@ -5,12 +5,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
 from supabase.client import create_client
 from app.infra.services.gmail_service import GmailService
-# SỬA LẠI IMPORT: Chỉ cần import Class DocumentEntity
 from app.domain.entities.document_entity import DocumentEntity 
 
 logging.basicConfig(level=logging.INFO)
 
-# ... (Phần Cache Embeddings giữ nguyên) ...
 _cached_vectorizer_embeddings = None
 def get_vectorizer_embeddings():
     global _cached_vectorizer_embeddings
@@ -98,14 +96,13 @@ class EmailVectorizer:
                     batch_data = []
                     
                     for chunk, metadata, embedding in zip(all_chunks, all_metadatas, all_embeddings):
-                        # === SỬA TẠI ĐÂY: Dùng Class DocumentEntity ===
+
                         doc = DocumentEntity(
                             content=chunk,
                             metadata=metadata,
                             embedding=embedding,
                             user_id=self.user_id
                         )
-                        # ==============================================
                         batch_data.append(doc.model_dump())
                     
                     # Insert theo batch
