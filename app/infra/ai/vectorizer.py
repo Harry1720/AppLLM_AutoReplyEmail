@@ -19,7 +19,7 @@ def get_vectorizer_embeddings():
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True}
         )
-        logging.info("[Vectorizer] ✓ Embeddings Model đã được cache!")
+        logging.info("[Vectorizer]  Embeddings Model đã được cache!")
     return _cached_vectorizer_embeddings
 
 class EmailVectorizer:

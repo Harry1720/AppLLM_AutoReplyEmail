@@ -122,7 +122,7 @@ async def get_sent_email_ids(user_id: str = Depends(get_current_user_id)):
         "count": len(sent_ids)
     }
 
-# 10. LẤY CHI TIẾT MỘT DRAFT (Đã sửa truy cập Entity)
+# 10. LẤY CHI TIẾT MỘT DRAFT 
 @email_router.get("/drafts/{draft_id}")
 async def get_draft_detail(
     draft_id: str,
@@ -133,10 +133,9 @@ async def get_draft_detail(
     supabase_draft = draft_repo.get_draft_by_gmail_id(draft_id)
     
     if supabase_draft:
-        # === ĐÃ SỬA: Truy cập bằng dấu chấm (Entity Attribute) ===
         return {
             "data": {
-                "id": supabase_draft.draft_id,       # Không dùng .get()
+                "id": supabase_draft.draft_id,       
                 "subject": supabase_draft.subject,
                 "to": supabase_draft.recipient,
                 "body": supabase_draft.body,
