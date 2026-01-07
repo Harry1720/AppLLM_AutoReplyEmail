@@ -118,40 +118,73 @@ class EmailReasoningSystem:
             logging.warning(f"Lỗi RAG: {e}. Tiếp tục không có context.")
             return {**state, "context_emails": []}
 
-    # --- NODE 3: VIẾT TRẢ LỜI ---
+   # --- NODE 3: VIẾT TRẢ LỜI (DÙNG PROMPT TIẾNG VIỆT CŨ) ---
     def generate_reply_node(self, state: GraphState) -> GraphState:
         email = state.get("current_email")
         if not email: return state
         
         logging.info("Groq đang suy nghĩ ...")
         
+        # Lấy context (nếu không có thì để trống để tránh nhiễu)
         context_str = "\n---\n".join(state["context_emails"]) if state.get("context_emails") else "Không có văn mẫu."
+        
+        # Instruction mặc định
         instruction = state.get("instruction", "Phản hồi phù hợp và chuyên nghiệp.")
 
+        # === PROMPT TIẾNG VIỆT (CŨ CỦA BẠN) ===
         template = """
         VAI TRÒ CỦA BẠN:
         Bạn là chính tôi (chủ sở hữu email). Bạn đang viết thư trả lời cho người khác.
         KHÔNG ĐƯỢC đóng vai người gửi. KHÔNG ĐƯỢC lặp lại lời người gửi.
 
         DỮ LIỆU ĐẦU VÀO:
-        1. [VĂN PHONG CỦA TÔI]: {context}
+        1. [VĂN PHONG CỦA TÔI] (Tham khảo cách tôi viết):
+        {context}
+        
         2. [EMAIL NGƯỜI KHÁC GỬI ĐẾN]:
-           - Người gửi: {sender}
-           - Chủ đề: {subject}
-           - Nội dung gốc: "{body}"
+        - Người gửi: {sender}
+        - Chủ đề: {subject}
+        - Nội dung gốc: "{body}"
+        
         3. [YÊU CẦU]: "{instruction}"
 
-        QUY TẮC BẮT BUỘC:
-        1. NGÔN NGỮ: Nếu khách viết Anh -> Trả lời Anh. Khách viết Việt -> Trả lời Việt.
-        2. CHỐNG NHÁI: KHÔNG lặp lại câu hỏi của khách.
-        3. CẤU TRÚC: Chào hỏi -> Tóm tắt ý hiểu -> Phản hồi chi tiết -> Đề xuất tiếp theo -> Kết thư.
-        4. OUTPUT FORMAT (JSON ONLY):
+        QUY TẮC BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
+        
+        1. TỰ ĐỘNG PHÁT HIỆN NGÔN NGỮ (QUAN TRỌNG NHẤT):
+           - Hãy đọc "Nội dung gốc".
+           - Nếu người gửi viết TIẾNG ANH -> Bạn BẮT BUỘC trả lời bằng TIẾNG ANH.
+           - Nếu người gửi viết TIẾNG VIỆT -> Bạn BẮT BUỘC trả lời bằng TIẾNG VIỆT.
+           - (Bỏ qua ngôn ngữ của phần [VĂN PHONG CỦA TÔI], chỉ quan tâm ngôn ngữ của email mới).
+
+        2. CHỐNG NHÁI (ANTI-PARROTING):
+           - Đây là thư "REPLY" (Trả lời).
+           - Tuyệt đối KHÔNG chép lại nội dung của người gửi.
+           - Ví dụ: Họ hỏi "Khỏe không?", bạn trả lời "Tôi khỏe", KHÔNG ĐƯỢC viết lại "Khỏe không?".
+           - Khách nói "Chào bộ phận quản lý" -> ĐÓ LÀ LỜI HỌ NÓI VỚI BẠN.
+           - BẠN KHÔNG ĐƯỢC CHÀO LẠI "Chào bộ phận quản lý".
+           - BẠN PHẢI CHÀO TÊN HỌ: "Chào {sender}," hoặc "Chào bạn {sender},".
+
+        3. NỘI DUNG:
+           - Đi thẳng vào câu trả lời. Ngắn gọn, súc tích.
+           - Không thêm mở bài, kết bài dài dòng.
+           - Trả lời đúng trọng tâm câu hỏi.
+           - Không bịa ra thông tin ngày giờ cụ thể nếu không biết (dùng [Time], [Date]...).
+
+        4. THÁI ĐỘ (Dựa trên nội dung):
+           - Nếu khách đang giận (khiếu nại) -> Hãy xin lỗi, nhún nhường, xưng "Em/Mình" hoặc "Chúng tôi".
+           - Nếu là công việc -> Chuyên nghiệp.
+           - Nếu là bạn bè -> Thân mật, vui vẻ.
+           - Nếu không rõ -> Trung lập, lịch sự.
+
+        ĐỊNH DẠNG OUTPUT (JSON ONLY):
+        Chỉ trả về JSON hợp lệ. Không được có bất kỳ dòng chữ nào khác bên ngoài JSON.
         {{
-            "subject": "Tiêu đề thư",
-            "body": "Nội dung HTML (dùng <br> để xuống dòng)"
+            "subject": "Tiêu đề thư (Thêm 'Re:' phía trước tiêu đề gốc)",
+            "body": "Nội dung thư trả lời (Định dạng HTML, xuống dòng dùng <br>)"
         }}
         """
         
+        # Cắt nội dung ngắn bớt để AI tập trung
         body_content = email.get('body', '')[:2500]
 
         prompt = PromptTemplate.from_template(template).format(
@@ -163,13 +196,16 @@ class EmailReasoningSystem:
         )
         
         try:
+            # Gọi LLM (Groq/Ollama)
             response = self.llm.invoke(prompt)
             
+            # Xử lý kết quả trả về
             if hasattr(response, 'content'):
                 response_text = response.content
             else:
                 response_text = str(response)
             
+            # Làm sạch JSON
             response_clean = response_text.strip()
             if "```json" in response_clean:
                 response_clean = response_clean.split("```json")[1].split("```")[0]
@@ -180,7 +216,7 @@ class EmailReasoningSystem:
             return {**state, "draft_reply": draft}
             
         except Exception as e:
-            logging.error(f"Lỗi Groq Gen: {e}")
+            logging.error(f"Lỗi Gen Reply: {e}")
             return {**state, "draft_reply": {
                 "subject": f"Re: {email.get('subject')}",
                 "body": "Xin lỗi, hệ thống AI đang bận. Vui lòng thử lại sau."
